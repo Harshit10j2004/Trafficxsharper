@@ -3,7 +3,7 @@
 set -x
 
 data="/home/ubuntu/syslogs/sysscrlog/usage.log"
-
+rec_ip=""
 timestamp=$(date "+%Y-%m-%d %H:%M:%S.%3N")
 
 cpu=$(mpstat 1 1 | grep Average | awk '{print $12}')
@@ -16,8 +16,11 @@ network_stats=$(ifstat -b 1 1 2>/dev/null | awk 'NR==3 {print $1, $2}')
 network_in_bytes=$(echo $network_stats | awk '{printf "%.0f", $1 * 1024}')
 network_out_bytes=$(echo $network_stats | awk '{printf "%.0f", $2 * 1024}')
 
-echo "${timestamp},${cpu_used_percent},${cpu},${mem},${mem_used},${disk},${network_in_bytes},${network_out_bytes}" >> "${data}"
+line="$timestamp,$cpu_used_percent,$cpu,$mem,$mem_used,$disk,$network_in_bytes,$network_out_bytes"
 
 sleep 5
 
-#rsync -avz --progress -e "ssh -i -o StrictHostKeyChecking=accept"
+{
+    echo "usage_$(hostname).log"
+    echo "$line"
+} | ncat $rec_ip 9000
