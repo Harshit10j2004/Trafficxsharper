@@ -1,14 +1,19 @@
 import glob
+import requests
 
-location = "/home/ubuntu/exp"
+location = "/home/ubuntu/tsx/data"
 v1 = v2 = v3 = v4 = v5 = v6 = v7 = 0
 count = 0
+url = "http://13.233.96.81:8000/ingest"
 
-for file_path in glob.glob(f"{location}/*.txt"):
+timestamp = None
+for file_path in glob.glob(f"{location}/*.log"):
     print(file_path)
     with open(file_path) as f:
         line = f.read().strip()
         parts = line.split(",")
+
+        timestamp = parts[0]
         values = parts[1:]
 
         x1, x2, x3, x4, x5, x6, x7 = map(float, values)
@@ -21,7 +26,7 @@ for file_path in glob.glob(f"{location}/*.txt"):
         v6 += x6
         v7 += x7
 
-    count=count+1
+    count += 1
 
 if count > 0:
     v1 /= count
@@ -34,3 +39,19 @@ if count > 0:
 
 print("Averages:")
 print(v1, v2, v3, v4, v5, v6, v7)
+
+payload = {
+    "timestamp": timestamp,
+    "cpu_percantage": v1,
+    "cpu_idle_percent": v2,
+    "total_ram": v3,
+    "ram_used": v4,
+    "disk_usage_percent": v5,
+    "network_in": v6,
+    "network_out": v7,
+    "client_id": 1
+}
+
+requests.post(url, json=payload)
+
+print("datasend")
