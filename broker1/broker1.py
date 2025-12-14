@@ -4,15 +4,7 @@ import logging
 from pydantic import BaseModel
 import os
 
-# con = mysql.connector.connect(
-#             host= "localhost",
-#             user = "root",
-#             password = "Harshit@1234",
-#             database = "client_info"
-#
-#         )
-#
-# cursor = con.cursor()
+
 
 class Metrics(BaseModel):
     timestamp : str
@@ -31,6 +23,17 @@ broker1api = FastAPI()
 @broker1api.post("/ingest")
 async def broker1func(metrics: Metrics):
 
+    con = mysql.connector.connect(
+            host= "",
+            user = "",
+            password = "",
+            database = ""
+
+        )
+
+    cursor = con.cursor()
+
+
     cpu = metrics.cpu_percantage
     cpu_idle = metrics.cpu_idle_percent
     totalram = metrics.total_ram
@@ -42,6 +45,7 @@ async def broker1func(metrics: Metrics):
     timestamp = metrics.timestamp
     print(cpu,cpu_idle,totalram,ramused,diskusage,networkin,networkout,client_id)
     file = "/home/ubuntu/tsx/data/totalavg.txt"
+    test_file = "/home/ubuntu/tsx/data/test.txt"
 
     row = [timestamp,cpu,cpu_idle,totalram,ramused,diskusage,networkin,networkout,client_id]
 
@@ -50,8 +54,11 @@ async def broker1func(metrics: Metrics):
        f.write(",".join(str(v) for v in row) + "\n")
 
 
-    # query = f"select name from client_info where client is = %s",(client_id,)
-    #
-    # cursor.execute(query)
-    # answer = cursor.fetchone()
-    # print(answer)
+    query = "SELECT client_name FROM client_info WHERE client_id = %s"
+    cursor.execute(query, (client_id,))
+    answer = cursor.fetchone()
+
+
+    with open(test_file,"a") as f:
+
+       f.write(str(answer[0]) + "\n")

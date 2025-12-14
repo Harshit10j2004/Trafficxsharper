@@ -4,7 +4,7 @@ import requests
 location = "/home/ubuntu/tsx/data"
 v1 = v2 = v3 = v4 = v5 = v6 = v7 = 0
 count = 0
-url = "http://13.233.96.81:8000/ingest"
+url = ""
 
 timestamp = None
 for file_path in glob.glob(f"{location}/*.log"):
