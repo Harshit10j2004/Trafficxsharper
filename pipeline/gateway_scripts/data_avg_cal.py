@@ -1,20 +1,23 @@
 import glob
 import requests
-
+from datetime import datetime , timezone
 location = "/home/ubuntu/tsx/data"
 v1 = v2 = v3 = v4 = v5 = v6 = v7 = 0
 count = 0
-url = ""
+url = "http:///ingest"
 
-timestamp = None
+now = datetime.now(timezone.utc)
+timestamp = now.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+freez_window = int((now.timestamp() * 1000)//300)
+
 for file_path in glob.glob(f"{location}/*.log"):
     print(file_path)
     with open(file_path) as f:
         line = f.read().strip()
         parts = line.split(",")
 
-        timestamp = parts[0]
-        values = parts[1:]
+
+        values = parts
 
         x1, x2, x3, x4, x5, x6, x7 = map(float, values)
 
@@ -49,7 +52,8 @@ payload = {
     "disk_usage_percent": v5,
     "network_in": v6,
     "network_out": v7,
-    "client_id": 1
+    "client_id": 100,
+    "freeze_id": freez_window
 }
 
 requests.post(url, json=payload)

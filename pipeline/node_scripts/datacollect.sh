@@ -4,7 +4,6 @@ set -x
 
 data="/home/ubuntu/syslogs/sysscrlog/usage.log"
 rec_ip=""
-timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 cpu=$(mpstat 1 1 | grep Average | awk '{print $12}')
 cpu_used_percent=$(echo "100 - $cpu" | bc)
@@ -16,7 +15,7 @@ network_stats=$(ifstat -b 1 1 2>/dev/null | awk 'NR==3 {print $1, $2}')
 network_in_bytes=$(echo $network_stats | awk '{printf "%.0f", $1 * 1024}')
 network_out_bytes=$(echo $network_stats | awk '{printf "%.0f", $2 * 1024}')
 
-line="$timestamp,$cpu_used_percent,$cpu,$mem,$mem_used,$disk,$network_in_bytes,$network_out_bytes"
+line="$cpu_used_percent,$cpu,$mem,$mem_used,$disk,$network_in_bytes,$network_out_bytes"
 
 sleep 5
 

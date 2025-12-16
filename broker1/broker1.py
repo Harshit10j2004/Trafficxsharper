@@ -16,6 +16,7 @@ class Metrics(BaseModel):
     network_in: float
     network_out: float
     client_id : int
+    freeze_window: int
 
 
 broker1api = FastAPI()
@@ -25,9 +26,9 @@ async def broker1func(metrics: Metrics):
 
     con = mysql.connector.connect(
             host= "",
-            user = "",
+            user = "admin",
             password = "",
-            database = ""
+            database = "tsx"
 
         )
 
@@ -43,11 +44,20 @@ async def broker1func(metrics: Metrics):
     networkout = metrics.network_out
     client_id = metrics.client_id
     timestamp = metrics.timestamp
-    print(cpu,cpu_idle,totalram,ramused,diskusage,networkin,networkout,client_id)
+    freeze_window = metrics.freeze_window
+
+    print(cpu,cpu_idle,totalram,ramused,diskusage,networkin,networkout,client_id,freeze_window)
+    row = [timestamp, cpu, cpu_idle, totalram, ramused, diskusage, networkin, networkout, client_id]
+
     file = "/home/ubuntu/tsx/data/totalavg.txt"
     test_file = "/home/ubuntu/tsx/data/test.txt"
 
-    row = [timestamp,cpu,cpu_idle,totalram,ramused,diskusage,networkin,networkout,client_id]
+    file_name = f"{freeze_window}.log"
+    freeze_window_file = f"/home/ubuntu/tsx/data/client/{client_id}/{file_name}"
+
+    with open(freeze_window_file,"w") as f:
+        f.write(row)
+
 
     with open(file,"a") as f:
 
