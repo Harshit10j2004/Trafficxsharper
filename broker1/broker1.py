@@ -1,9 +1,9 @@
 from fastapi import FastAPI,Form
 import mysql.connector
-import logging
 from pydantic import BaseModel
-import os
+import requests
 
+from pipeline.gateway_scripts.data_avg_cal import payload
 
 
 class Metrics(BaseModel):
@@ -58,17 +58,65 @@ async def broker1func(metrics: Metrics):
     with open(freeze_window_file,"w") as f:
         f.write(row)
 
-
     with open(file,"a") as f:
 
        f.write(",".join(str(v) for v in row) + "\n")
 
-
     query = "SELECT client_name FROM client_info WHERE client_id = %s"
+    query2 = "select threshold,buffer_z,buffer_lower from client_info where client_id = %s"
+
     cursor.execute(query, (client_id,))
+    cursor.execute(query2, (client_id,))
+
+    result = cursor.fetchone()
     answer = cursor.fetchone()
 
+    threshold = result["threshold"]
+    buffer_z = result["buffer_z"]
+    buffer_lower = result["buffer_lower"]
 
     with open(test_file,"a") as f:
 
        f.write(str(answer[0]) + "\n")
+
+    if cpu >= threshold-buffer_lower:
+
+        payload = {
+            "timestamp": timestamp,
+            "cpu": cpu,
+            "cpu_idle": cpu_idle,
+            "total_ram": totalram,
+            "ram_used": ramused,
+            "disk_usage": diskusage,
+            "network_in": networkin,
+            "network_out": networkout,
+            "window_id": freeze_window
+                
+        }
+
+        url = ""
+
+        requests.post(url,json=payload)
+
+    elif cpu >= threshold+buffer_z:
+
+        message = "PANIC"
+
+        payload = {
+            "timestamp": timestamp,
+            "cpu": cpu,
+            "cpu_idle": cpu_idle,
+            "total_ram": totalram,
+            "ram_used": ramused,
+            "disk_usage": diskusage,
+            "network_in": networkin,
+            "network_out": networkout,
+            "window_id": freeze_window,
+            "message": message
+
+        }
+
+        url = ""
+
+        requests.post(url, json=payload)
+
