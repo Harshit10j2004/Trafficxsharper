@@ -14,16 +14,16 @@ id = random.randint(0,10000)
 print(f"your id is {id} remember this")
 
 con = mysql.connector.connect(
-    host="",
-    user="",
-    password = "",
-    database = ""
+    host="database-1.cd4aucgqi8lr.ap-south-1.rds.amazonaws.com",
+    user="admin",
+    password = "Harshit10jan",
+    database = "tsx"
 )
 
 cursor = con.cursor()
 
-values = (name,int(id),int(thresold),int(l_buf),int(h_buf))
-query = "insert into client_info(name,id,thresold,l_buff,h_buff) values(%s,%s,%s,%s,%s)"
+values = (int(id),name,int(thresold),int(l_buf),int(h_buf))
+query = "insert into client_info(clinet_id,client_name,thresold,l_buff,h_buff) values(%s,%s,%s,%s,%s)"
 
 cursor.execute(query,values)
 con.commit()

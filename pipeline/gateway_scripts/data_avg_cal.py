@@ -52,10 +52,10 @@ payload = {
     "disk_usage_percent": v5,
     "network_in": v6,
     "network_out": v7,
-    "client_id": 100,
+    "client_id": 3828,
     "freeze_id": freez_window
 }
 
-requests.post(url, json=payload)
+requests.post(url, json=payload,timeout = 3)
 
 print("datasend")

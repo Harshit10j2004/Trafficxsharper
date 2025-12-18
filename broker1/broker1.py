@@ -3,10 +3,9 @@ import mysql.connector
 from pydantic import BaseModel
 import requests
 
-from pipeline.gateway_scripts.data_avg_cal import payload
-
 
 class Metrics(BaseModel):
+
     timestamp : str
     cpu_percantage : float
     cpu_idle_percent: float
@@ -56,28 +55,30 @@ async def broker1func(metrics: Metrics):
     freeze_window_file = f"/home/ubuntu/tsx/data/client/{client_id}/{file_name}"
 
     with open(freeze_window_file,"w") as f:
-        f.write(row)
+        f.write(",".join(map(str, row)) + "\n")
 
     with open(file,"a") as f:
 
        f.write(",".join(str(v) for v in row) + "\n")
 
-    query = "SELECT client_name FROM client_info WHERE client_id = %s"
-    query2 = "select threshold,buffer_z,buffer_lower from client_info where client_id = %s"
 
-    cursor.execute(query, (client_id,))
+    query2 = "select client_name,thresold,l_buff,h_buff from client_info where client_id = %s"
+
+
     cursor.execute(query2, (client_id,))
 
-    result = cursor.fetchone()
-    answer = cursor.fetchone()
+    row = cursor.fetchone()
 
-    threshold = result["threshold"]
-    buffer_z = result["buffer_z"]
-    buffer_lower = result["buffer_lower"]
+    client_name = row[0]
+    threshold = row[1]
+    buffer_z = row[2]
+    buffer_lower = row[3]
+
+
 
     with open(test_file,"a") as f:
 
-       f.write(str(answer[0]) + "\n")
+       f.write(client_name)
 
     if cpu >= threshold-buffer_lower:
 
@@ -91,7 +92,7 @@ async def broker1func(metrics: Metrics):
             "network_in": networkin,
             "network_out": networkout,
             "window_id": freeze_window
-                
+
         }
 
         url = ""
@@ -103,15 +104,8 @@ async def broker1func(metrics: Metrics):
         message = "PANIC"
 
         payload = {
-            "timestamp": timestamp,
-            "cpu": cpu,
-            "cpu_idle": cpu_idle,
-            "total_ram": totalram,
-            "ram_used": ramused,
-            "disk_usage": diskusage,
-            "network_in": networkin,
-            "network_out": networkout,
-            "window_id": freeze_window,
+
+
             "message": message
 
         }
@@ -120,3 +114,4 @@ async def broker1func(metrics: Metrics):
 
         requests.post(url, json=payload)
 
+    return {"status": "accepted"}
