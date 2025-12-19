@@ -1,7 +1,20 @@
-from fastapi import FastAPI
+from fastapi import FastAPI,HTTPException,status
 from pydantic import BaseModel
 import requests
 import asyncio
+from dotenv import load_dotenv
+import os
+import logging
+
+load_dotenv(r"")
+
+
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    filename=os.getenv("LOG_FILE"),
+    filemode='a'
+)
 
 
 
@@ -14,6 +27,7 @@ class Metrics(BaseModel):
     disk_usage: float
     network_in: float
     network_out: float
+    live_connections: int
     window_id: int
 
 mlapi = FastAPI()
@@ -30,27 +44,43 @@ async def mlfunc(metrics: Metrics):
     networkout = metrics.network_out
     timestamp = metrics.timestamp
     window_id = metrics.window_id
+    live_connections = metrics.live_connections
 
 
 
-    message = None
+
     if cpu>70:
-        await asyncio.sleep(50)
 
-        if(cpu >= 80):
-            message = "P"
+        try:
+            await asyncio.sleep(50)
 
-        else:
+            if(cpu >= 80):
+                message = "P"
 
-            message = "NP"
+            else:
 
-        payload = {
+                message = "NP"
 
-            "message": message
-        }
+            payload = {
 
-        url = ""
-        requests.post(url,json=payload)
+                "message": message
+            }
+
+            url = ""
+            requests.post(url,json=payload)
+
+        except Exception as e:
+
+            logging.debug("ML api caused a error")
+
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=f"{str(e)}"
+            )
+
+
+
+
 
 
 

@@ -1,10 +1,17 @@
 import glob
+import os
+
 import requests
 from datetime import datetime , timezone
-location = "/home/ubuntu/tsx/data"
-v1 = v2 = v3 = v4 = v5 = v6 = v7 = 0
+from dotenv import load_dotenv
+
+load_dotenv(r"")
+
+
+location =os.getenv("FILE")
+v1 = v2 = v3 = v4 = v5 = v6 = v7 = v8 = 0
 count = 0
-url = "http:///ingest"
+url = os.getenv("URL")
 
 now = datetime.now(timezone.utc)
 timestamp = now.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
@@ -19,7 +26,7 @@ for file_path in glob.glob(f"{location}/*.log"):
 
         values = parts
 
-        x1, x2, x3, x4, x5, x6, x7 = map(float, values)
+        x1, x2, x3, x4, x5, x6, x7,x8 = map(float, values)
 
         v1 += x1
         v2 += x2
@@ -28,6 +35,7 @@ for file_path in glob.glob(f"{location}/*.log"):
         v5 += x5
         v6 += x6
         v7 += x7
+        v8 += x8
 
     count += 1
 
@@ -39,9 +47,10 @@ if count > 0:
     v5 /= count
     v6 /= count
     v7 /= count
+    v8 /= count
 
 print("Averages:")
-print(v1, v2, v3, v4, v5, v6, v7)
+print(v1, v2, v3, v4, v5, v6, v7,v8)
 
 payload = {
     "timestamp": timestamp,
@@ -52,10 +61,15 @@ payload = {
     "disk_usage_percent": v5,
     "network_in": v6,
     "network_out": v7,
+    "live_connections": v8,
     "client_id": 3828,
     "freeze_id": freez_window
 }
+try:
+    r = requests.post(url, json=payload,timeout = 3)
 
-requests.post(url, json=payload,timeout = 3)
+    print(f"datasend and {r}")
 
-print("datasend")
+except Exception as e:
+
+    print(e)

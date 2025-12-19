@@ -1,8 +1,10 @@
-from fastapi import FastAPI,Form
+from fastapi import FastAPI,HTTPException,status
 import mysql.connector
 from pydantic import BaseModel
 import requests
-
+from dotenv import load_dotenv
+import os
+import logging
 
 class Metrics(BaseModel):
 
@@ -16,22 +18,56 @@ class Metrics(BaseModel):
     network_out: float
     client_id : int
     freeze_window: int
+    live_connections: int
 
 
 broker1api = FastAPI()
 
+
+load_dotenv(r"")
+
+
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    filename=os.getenv("LOG_FILE"),
+    filemode='a'
+)
+
+
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    filename=os.getenv("LOG_FILE"),
+    filemode='a'
+)
+
 @broker1api.post("/ingest")
 async def broker1func(metrics: Metrics):
 
-    con = mysql.connector.connect(
-            host= "",
-            user = "admin",
-            password = "",
-            database = "tsx"
 
+
+    try:
+
+        con = mysql.connector.connect(
+                host= os.getenv("DB_HOST"),
+                user = os.getenv("USER"),
+                password = os.getenv("PASSWORD"),
+                database = os.getenv("DATABASE")
+
+            )
+
+        cursor = con.cursor()
+    except Exception as e:
+
+        logging.error("Connection to database caused issue!!!")
+
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Database connection failed: {str(e)}"
         )
 
-    cursor = con.cursor()
+
 
 
     cpu = metrics.cpu_percantage
@@ -44,74 +80,117 @@ async def broker1func(metrics: Metrics):
     client_id = metrics.client_id
     timestamp = metrics.timestamp
     freeze_window = metrics.freeze_window
+    live_connections = metrics.live_connections
 
-    print(cpu,cpu_idle,totalram,ramused,diskusage,networkin,networkout,client_id,freeze_window)
-    row = [timestamp, cpu, cpu_idle, totalram, ramused, diskusage, networkin, networkout, client_id]
+    row = [timestamp, cpu, cpu_idle, totalram, ramused, diskusage, networkin, networkout,live_connections, client_id]
 
-    file = "/home/ubuntu/tsx/data/totalavg.txt"
-    test_file = "/home/ubuntu/tsx/data/test.txt"
+    file = os.getenv("TOTAL_AVG")
+    test_file = os.getenv("TEST")
 
-    file_name = f"{freeze_window}.log"
-    freeze_window_file = f"/home/ubuntu/tsx/data/client/{client_id}/{file_name}"
+    try:
 
-    with open(freeze_window_file,"w") as f:
-        f.write(",".join(map(str, row)) + "\n")
+        query2 = "select client_name,thresold,l_buff,h_buff from client_info where client_id = %s"
 
-    with open(file,"a") as f:
+        cursor.execute(query2, (client_id,))
 
-       f.write(",".join(str(v) for v in row) + "\n")
+        db = cursor.fetchone()
 
+        if not db:
+            logging.debug("loading client from db caused issue!!")
+            raise HTTPException(status_code=404, detail="Client not found")
 
-    query2 = "select client_name,thresold,l_buff,h_buff from client_info where client_id = %s"
+        client_name = db[0]
+        threshold = db[1]
+        buffer_z = db[2]
+        buffer_lower = db[3]
 
+    finally:
+        cursor.close()
+        con.close()
 
-    cursor.execute(query2, (client_id,))
+    try:
 
-    row = cursor.fetchone()
+        file_name = f"{freeze_window}.log"
+        freeze_window_file = f"/home/ubuntu/tsx/data/client/{client_id}/{file_name}"
 
-    client_name = row[0]
-    threshold = row[1]
-    buffer_z = row[2]
-    buffer_lower = row[3]
+        with open(freeze_window_file,"w") as f:
+            f.write(",".join(map(str, row)) + "\n")
 
+        with open(file,"a") as f:
 
+           f.write(",".join(str(v) for v in row) + "\n")
 
-    with open(test_file,"a") as f:
+        with open(test_file, "a") as f:
 
-       f.write(client_name)
+            f.write(client_name)
 
-    if cpu >= threshold-buffer_lower:
+    except Exception as e:
 
-        payload = {
-            "timestamp": timestamp,
-            "cpu": cpu,
-            "cpu_idle": cpu_idle,
-            "total_ram": totalram,
-            "ram_used": ramused,
-            "disk_usage": diskusage,
-            "network_in": networkin,
-            "network_out": networkout,
-            "window_id": freeze_window
+        logging.debug("Writing the files caused issue!!!")
 
-        }
-
-        url = ""
-
-        requests.post(url,json=payload)
-
-    elif cpu >= threshold+buffer_z:
-
-        message = "PANIC"
-
-        payload = {
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"File_writing_fails: {str(e)}"
+        )
 
 
-            "message": message
+    if cpu >= threshold+buffer_z:
 
-        }
+        try:
 
-        url = ""
+            message = "PANIC"
 
-        requests.post(url, json=payload)
+            payload = {
+                "message": message
+            }
 
-    return {"status": "accepted"}
+            url = os.getenv("DEC_URL")
+
+            r = requests.post(url, json=payload, timeout=1)
+            r.raise_for_status()
+
+        except Exception as e:
+
+            logging.error("Sending request to dec_eng api caused issue!!!")
+
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=f" dec_eng api not responding: {str(e)}"
+            )
+
+    elif cpu >= threshold-buffer_lower:
+
+        try:
+            payload = {
+                "timestamp": timestamp,
+                "cpu": cpu,
+                "cpu_idle": cpu_idle,
+                "total_ram": totalram,
+                "ram_used": ramused,
+                "disk_usage": diskusage,
+                "network_in": networkin,
+                "network_out": networkout,
+                "live_connections": live_connections,
+                "window_id": freeze_window
+
+            }
+
+            url = os.getenv("ML_URL")
+
+            r = requests.post(url, json=payload, timeout=1)
+            r.raise_for_status()
+
+
+        except Exception as e:
+
+            logging.error("Sending request to ml api caused issue!!!")
+
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=f" ml api not responding: {str(e)}"
+
+            )
+
+    return {"status": "forwarded"}
+
+
