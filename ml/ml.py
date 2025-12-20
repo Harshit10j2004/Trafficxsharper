@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 import os
 import logging
 
-load_dotenv(r"")
+load_dotenv(r"/home/ubuntu/tsx/data/data.env")
 
 
 logging.basicConfig(
@@ -66,7 +66,7 @@ async def mlfunc(metrics: Metrics):
                 "message": message
             }
 
-            url = ""
+            url = os.getenv("URL")
             requests.post(url,json=payload)
 
         except Exception as e:

@@ -24,15 +24,7 @@ class Metrics(BaseModel):
 broker1api = FastAPI()
 
 
-load_dotenv(r"")
-
-
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    filename=os.getenv("LOG_FILE"),
-    filemode='a'
-)
+load_dotenv(r"/home/ubuntu/tsx/data/data.env")
 
 
 logging.basicConfig(
@@ -60,7 +52,7 @@ async def broker1func(metrics: Metrics):
         cursor = con.cursor()
     except Exception as e:
 
-        logging.error("Connection to database caused issue!!!")
+        logging.error(f"Connection to database caused issue!!! {str(e)}")
 
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -96,7 +88,7 @@ async def broker1func(metrics: Metrics):
         db = cursor.fetchone()
 
         if not db:
-            logging.debug("loading client from db caused issue!!")
+            logging.debug(f"loading client from db caused issue!! ")
             raise HTTPException(status_code=404, detail="Client not found")
 
         client_name = db[0]
@@ -126,7 +118,7 @@ async def broker1func(metrics: Metrics):
 
     except Exception as e:
 
-        logging.debug("Writing the files caused issue!!!")
+        logging.debug(f"Writing the files caused issue!!! {str(e)}")
 
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -151,7 +143,7 @@ async def broker1func(metrics: Metrics):
 
         except Exception as e:
 
-            logging.error("Sending request to dec_eng api caused issue!!!")
+            logging.error(f"Sending request to dec_eng api caused issue!!! {str(e)}")
 
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -183,7 +175,7 @@ async def broker1func(metrics: Metrics):
 
         except Exception as e:
 
-            logging.error("Sending request to ml api caused issue!!!")
+            logging.error(f"Sending request to ml api caused issue!!! {str(e)}")
 
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

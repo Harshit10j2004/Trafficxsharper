@@ -1,11 +1,10 @@
 import glob
 import os
-
 import requests
 from datetime import datetime , timezone
 from dotenv import load_dotenv
 
-load_dotenv(r"")
+load_dotenv(r"/home/ubuntu/tsx/sysdata/data.env")
 
 
 location =os.getenv("FILE")
@@ -63,7 +62,7 @@ payload = {
     "network_out": v7,
     "live_connections": v8,
     "client_id": 3828,
-    "freeze_id": freez_window
+    "freeze_window": freez_window
 }
 try:
     r = requests.post(url, json=payload,timeout = 3)
