@@ -7,7 +7,7 @@ import smtplib
 import logging
 
 
-load_dotenv(r"C:\Users\harsh\OneDrive\Desktop\envs\healthcheck.env")
+load_dotenv(r"/home/ubuntu/tsx/data/data.env")
 
 logging.basicConfig(
     level= logging.DEBUG,
@@ -29,10 +29,11 @@ class AlertData(BaseModel):
 
 emailapp = FastAPI()
 
-def mainmail(data=AlertData):
+@emailapp.post("/email")
+def mainmail(data:AlertData):
 
     email = data.email
-    total_instance = data.total_ins
+    total_instance = data.total_instances
     scale = data.scale
 
     subject = f"TSX Alert: Infrastructure Scaled {scale}"
@@ -49,5 +50,10 @@ def mainmail(data=AlertData):
             server.login(sender, app_password)
             server.sendmail(sender, email, message.as_string())
     except Exception as e:
-        print(e)
+        logging.debug(f"issue {str(e)}")
+
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"emailapi having issue"
+        )
 

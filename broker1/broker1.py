@@ -43,7 +43,7 @@ async def broker1func(metrics: Metrics):
 
         con = mysql.connector.connect(
                 host= os.getenv("DB_HOST"),
-                user = os.getenv("USER"),
+                user = os.getenv("DB_USER"),
                 password = os.getenv("PASSWORD"),
                 database = os.getenv("DATABASE")
 
@@ -81,7 +81,7 @@ async def broker1func(metrics: Metrics):
 
     try:
 
-        query2 = "select client_name,thresold,l_buff,h_buff from client_info where client_id = %s"
+        query2 = "select client_name,thresold,l_buff,h_buff,email,ami,server_type,current_instance from client_info where client_id = %s"
 
         cursor.execute(query2, (client_id,))
 
@@ -95,6 +95,10 @@ async def broker1func(metrics: Metrics):
         threshold = db[1]
         buffer_z = db[2]
         buffer_lower = db[3]
+        email = db[4]
+        ami = db[5]
+        server_type = db[6]
+        current_instance = db[7]
 
     finally:
         cursor.close()
@@ -131,9 +135,16 @@ async def broker1func(metrics: Metrics):
         try:
 
             message = "PANIC"
+            total_instance = int(current_instance/10)
 
             payload = {
-                "message": message
+                "message": message,
+                "email": email,
+                "ami": ami,
+                "server_type": server_type,
+                "total_instance": total_instance
+
+
             }
 
             url = os.getenv("DEC_URL")
