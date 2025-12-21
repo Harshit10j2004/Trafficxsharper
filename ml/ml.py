@@ -52,7 +52,7 @@ async def mlfunc(metrics: Metrics):
     if cpu>70:
 
         try:
-            await asyncio.sleep(50)
+            email = "onxy.harsh123@gmail.com"
 
             if(cpu >= 80):
                 message = "P"
@@ -63,7 +63,9 @@ async def mlfunc(metrics: Metrics):
 
             payload = {
 
-                "message": message
+                "message": message,
+                "email": email,
+                "total_inc": 1
             }
 
             url = os.getenv("URL")

@@ -23,48 +23,62 @@ class Metrics(BaseModel):
 
     message: str
     email: str
-    total_inc: int
+    total_instance: int
+    ami: str
+    server_type: str
 
 
 @deceng.post("/deceng")
 def decengfunc(metrics: Metrics):
 
-    try:
+
 
         message = metrics.message
         email = metrics.email
-        total_instances = metrics.total_inc
+        total_instances = metrics.total_instance
+        ami = metrics.ami
+        server_type = metrics.server_type
 
         file=os.getenv("FILE")
 
+        try:
 
 
-        ec2 = boto3.client("ec2",region_name="ap-south-1")
-        instances = ec2.create_instances(
-            ImageId="ami-0978e5f7af7072347",
-            MinCount=1,
-            MaxCount=1,
-            InstanceType="t2.micro",
-            KeyName="mainkey",
-            SecurityGroupIds=["sg-0664a235a9ca9ca86"],
-            SubnetId="subnet-0b157a1fb9dcbaf2e",
-            TagSpecifications=[
-                {
-                    "ResourceType": "instance",
-                    "Tags": [
-                        {"Key": "Name", "Value": "tsx-worker-1"},
+            ec2 = boto3.client("ec2",region_name="ap-south-1")
+            response = ec2.run_instances(
+                ImageId=ami,
+                MinCount=1,
+                MaxCount=total_instances,
+                InstanceType=server_type,
+                KeyName=os.getenv("KEY"),
+                SecurityGroupIds=[os.getenv("SG")],
+                SubnetId=os.getenv("SUBID"),
+                TagSpecifications=[
+                    {
+                        "ResourceType": "instance",
+                        "Tags": [
+                            {"Key": "Name", "Value": "tsx-worker-1"},
 
-                    ]
-                }
-            ]
-        )
+                        ]
+                    }
+                ]
+            )
 
-        instance = instances[0]
+            instance_id = response["Instances"][0]["InstanceId"]
+
+        except Exception as e:
+
+            logging.error(f"AWS caused issue: {str(e)}")
+
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="aws have issue"
+            )
 
         with open(file , "w") as f:
 
             f.write(f"scale {message}")
-            f.write(f"instance {instance}")
+            f.write(f"instance {instance_id}")
 
         payload = {
             "email": email,
@@ -78,11 +92,3 @@ def decengfunc(metrics: Metrics):
         r = requests.post(url,json=payload,timeout=1)
         r.raise_for_status()
 
-    except Exception as e:
-
-        logging.debug(f"error occured in decision engine {str(e)}")
-
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"issue {str(e)}"
-        )
