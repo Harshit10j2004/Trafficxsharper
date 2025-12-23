@@ -3,6 +3,7 @@
 set -x
 
 rec_ip=""
+SERVER_ID=$(cat "/home/ubuntu/tsx/data/server_id")
 
 cpu=$(mpstat 1 1 | grep Average | awk '{print $12}')
 cpu_used_percent=$(echo "100 - $cpu" | bc)
@@ -18,6 +19,6 @@ line="$cpu_used_percent,$cpu,$mem,$mem_used,$disk,$network_in_bytes,$network_out
 sleep 5
 
 {
-    echo "usage_$(hostname).log"
+    echo "usage_${SERVER_ID}.log"
     echo "$line"
 } | ncat $rec_ip 9000
