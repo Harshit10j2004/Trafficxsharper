@@ -1,10 +1,13 @@
 from fastapi import FastAPI,HTTPException,status
-import mysql.connector
 from pydantic import BaseModel
-import requests
 from dotenv import load_dotenv
+from datetime import datetime , timezone
 import os
 import logging
+import mysql.connector
+import requests
+
+
 
 class Metrics(BaseModel):
 
@@ -61,6 +64,20 @@ async def broker1func(metrics: Metrics):
 
 
 
+    timestamp = metrics.timestamp
+    client_ts = datetime.strptime(metrics.timestamp,"%Y-%m-%d %H:%M:%S.%f").replace(tzinfo=timezone.utc)
+    now = datetime.now(timezone.utc)
+    delta = abs((now - client_ts).total_seconds())
+
+    ALLOWED_SKEW = 60
+
+    if delta > ALLOWED_SKEW:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Timestamp out of sync"
+        )
+
+
 
     cpu = metrics.cpu_percantage
     cpu_idle = metrics.cpu_idle_percent
@@ -70,7 +87,6 @@ async def broker1func(metrics: Metrics):
     networkin = metrics.network_in
     networkout = metrics.network_out
     client_id = metrics.client_id
-    timestamp = metrics.timestamp
     freeze_window = metrics.freeze_window
     live_connections = metrics.live_connections
 
