@@ -12,7 +12,7 @@ mem_used=$(free -m | grep Mem | awk '{print $3}')
 disk=$(df -h --total | grep total | awk '{print $5}' | tr -d '%')
 network_in_bytes=$(echo $network_stats | awk '{printf "%.0f", $1 * 1024}')
 network_out_bytes=$(echo $network_stats | awk '{printf "%.0f", $2 * 1024}')
-connection=$(ss -H state established | wc -l0)
+connection=$(ss -H state established | wc -l)
 
 line="$cpu_used_percent,$cpu,$mem,$mem_used,$disk,$network_in_bytes,$network_out_bytes,$connection"
 
