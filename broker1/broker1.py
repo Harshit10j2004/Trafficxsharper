@@ -22,6 +22,9 @@ class Metrics(BaseModel):
     client_id : int
     freeze_window: int
     live_connections: int
+    server_expected: int
+    server_responded: int
+    missing_server: list[str]
 
 
 broker1api = FastAPI()
@@ -89,15 +92,26 @@ async def broker1func(metrics: Metrics):
     client_id = metrics.client_id
     freeze_window = metrics.freeze_window
     live_connections = metrics.live_connections
+    server_expected = metrics.server_expected
+    server_responded = metrics.server_responded
+    missing_server = metrics.missing_server
 
-    row = [timestamp, cpu, cpu_idle, totalram, ramused, diskusage, networkin, networkout,live_connections, client_id]
+    missing_server_count = None
+
+    if(len(missing_server) == 0):
+        missing_server_count = 0
+    else:
+
+        missing_server_count = len(missing_server)
+
+    row = [timestamp, cpu, cpu_idle, totalram, ramused, diskusage, networkin, networkout,live_connections, client_id,server_expected,server_responded,missing_server]
 
     file = os.getenv("TOTAL_AVG")
     test_file = os.getenv("TEST")
 
     try:
 
-        query2 = "select client_name,thresold,l_buff,h_buff,email,ami,server_type,current_instance from client_info where client_id = %s"
+        query2 = "select client_name,thresold,l_buff,h_buff,email,ami,server_type from client_info where client_id = %s"
 
         cursor.execute(query2, (client_id,))
 
@@ -114,7 +128,7 @@ async def broker1func(metrics: Metrics):
         email = db[4]
         ami = db[5]
         server_type = db[6]
-        current_instance = db[7]
+
 
     finally:
         cursor.close()
@@ -151,7 +165,11 @@ async def broker1func(metrics: Metrics):
         try:
 
             message = "PANIC"
-            total_instance = int(current_instance/10)
+
+            if(server_expected < 10):
+                total_instance = 1
+            else:
+                total_instance = int(server_expected/10)
 
             payload = {
                 "message": message,
