@@ -1,132 +1,129 @@
 import glob
 import os
 import requests
-from datetime import datetime , timezone
+from datetime import datetime, timezone
 from dotenv import load_dotenv
 from pathlib import Path
 
+load_dotenv("/home/ubuntu/tsx/sysdata/data.env")
 
-load_dotenv(r"/home/ubuntu/tsx/sysdata/data.env")
-
-missing_ids = set()
-location =os.getenv("FILE")
-url = os.getenv("URL")
-server_info = os.getenv("SERV_INFO")
-total_server_count = os.getenv("SERV_CNT")
-path = Path(os.getenv("FILE"))
+LOCATION = Path(os.getenv("FILE"))
+SERVER_INFO = Path(os.getenv("SERV_INFO"))
+TOTAL_SERVER_COUNT = Path(os.getenv("SERV_CNT"))
+URL = os.getenv("URL")
+CLIENT_ID = os.getenv("CLIENT_ID")
 
 def on_missing(node_id):
     print(f"[MISSING NODE DETECTED] {node_id}")
 
 
+def read_expected_servers():
+    if not SERVER_INFO.exists():
+        return set()
 
-def missingfile(location,server_info,on_missing):
-    with open(server_info) as f:
-        expected_ids = {line.strip() for line in f if line.strip()}
-    current_ids = {
-        p.stem for p in Path(location).iterdir()
-        if p.is_file()
+    with open(SERVER_INFO) as f:
+        return {line.strip() for line in f if line.strip()}
+
+def read_current_servers():
+    if not LOCATION.exists():
+        return set()
+    return {
+        p.stem
+        for p in LOCATION.iterdir()
+        if p.is_file() and p.suffix == ".log"
     }
-    missing_ids = expected_ids - current_ids
-    for node_id in missing_ids:
-        on_missing(node_id)
 
-    return missing_ids
+def detect_missing(expected, current):
+    missing = expected - current
+    for node in missing:
+        on_missing(node)
+    return missing
+
+def sync_server_info():
+    current_servers = read_current_servers()
+    expected_servers = read_expected_servers()
 
 
-v1 = v2 = v3 = v4 = v5 = v6 = v7 = v8 = 0
+    new_servers = current_servers - expected_servers
+
+    if not new_servers:
+        return
+
+    SERVER_INFO.touch(exist_ok=True)
+    with open(SERVER_INFO, "a") as f:
+        for server in new_servers:
+            f.write(server + "\n")
+
+
+v = [0.0] * 8
 count = 0
 
+for file_path in glob.glob(f"{LOCATION}/*.log"):
+    try:
+        with open(file_path) as f:
+            line = f.read().strip()
 
-with open(server_info, "w") as f:
-    for i in glob.glob(f"{location}/*.log"):
-        f.write(f"{Path(i).stem}\n")
-
-file_count = sum(1 for p in path.iterdir() if p.is_file())
-
-missing_id = None
-
-with open(total_server_count,"r+") as f:
-
-    number = int(f.read().strip())
-
-    if(file_count>number):
-
-        f.seek(0)
-        f.truncate()
-        f.write(str(file_count))
-
-    if(file_count<number):
-        missing_ids = missingfile(
-            location=location,
-            server_info=server_info,
-            on_missing=on_missing
-        )
-
-
-
-now = datetime.now(timezone.utc)
-timestamp = now.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-freez_window = int((now.timestamp() * 1000)//300)
-
-for file_path in glob.glob(f"{location}/*.log"):
-    print(file_path)
-    with open(file_path) as f:
-        line = f.read().strip()
         parts = line.split(",")
+        if len(parts) != 8:
+            continue  # corrupted file
 
+        values = list(map(float, parts))
 
-        values = parts
+        for i in range(8):
+            v[i] += values[i]
 
-        x1, x2, x3, x4, x5, x6, x7,x8 = map(float, values)
+        count += 1
 
-        v1 += x1
-        v2 += x2
-        v3 += x3
-        v4 += x4
-        v5 += x5
-        v6 += x6
-        v7 += x7
-        v8 += x8
-
-    count += 1
+    except Exception:
+        continue
 
 if count > 0:
-    v1 /= count
-    v2 /= count
-    v3 /= count
-    v4 /= count
-    v5 /= count
-    v6 /= count
-    v7 /= count
-    v8 /= count
-with open(server_info) as f:
-    server_expected = sum(1 for line in f if line.strip())
+    v = [x / count for x in v]
 
-server_responded = file_count
+current_servers = read_current_servers()
+sync_server_info()
+expected_servers = read_expected_servers()
 
+missing_servers = detect_missing(expected_servers, current_servers)
+
+server_expected = len(expected_servers)
+server_responded = len(current_servers)
+
+if TOTAL_SERVER_COUNT.exists():
+    with open(TOTAL_SERVER_COUNT, "r+") as f:
+        try:
+            prev = int(f.read().strip())
+        except:
+            prev = 0
+
+        if server_responded > prev:
+            f.seek(0)
+            f.truncate()
+            f.write(str(server_responded))
+
+now = datetime.now(timezone.utc)
 
 payload = {
-    "timestamp": timestamp,
-    "cpu_percantage": v1,
-    "cpu_idle_percent": v2,
-    "total_ram": v3,
-    "ram_used": v4,
-    "disk_usage_percent": v5,
-    "network_in": v6,
-    "network_out": v7,
-    "live_connections": v8,
-    "client_id": os.getenv("CLIENT_ID"),
-    "freeze_window": freez_window,
-    "server_excepted": server_expected,
+    "timestamp": now.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
+    "freeze_window": int(now.timestamp()),
+    "client_id": CLIENT_ID,
+
+    "cpu_percantage": v[0],
+    "cpu_idle_percent": v[1],
+    "total_ram": v[2],
+    "ram_used": v[3],
+    "disk_usage_percent": v[4],
+    "network_in": v[5],
+    "network_out": v[6],
+    "live_connections": v[7],
+
+    "server_expected": server_expected,
     "server_responded": server_responded,
-    "missing_server": list(missing_ids)
+    "missing_server": list(missing_servers)
 }
+
 try:
-    r = requests.post(url, json=payload,timeout = 3)
-
-    print(f"datasend and {r}")
-
+    r = requests.post(URL, json=payload, timeout=3)
+    print(f"[SENT] status={r.status_code}")
 except Exception as e:
-
-    print(e)
+    print(f"[ERROR] {e}")
