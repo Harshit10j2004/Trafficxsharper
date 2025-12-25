@@ -1,9 +1,24 @@
 import glob
 import os
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from datetime import datetime, timezone
 from dotenv import load_dotenv
 from pathlib import Path
+
+retry_strategy = Retry(
+    total=5,
+    backoff_factor=1,
+    status_forcelist=[502, 503, 504],
+    allowed_methods=["GET", "POST"]
+)
+
+adapter = HTTPAdapter(max_retries=retry_strategy)
+
+session = requests.Session()
+session.mount("http://", adapter)
+session.mount("https://", adapter)
 
 load_dotenv("/home/ubuntu/tsx/sysdata/data.env")
 
@@ -123,7 +138,7 @@ payload = {
 }
 
 try:
-    r = requests.post(URL, json=payload, timeout=3)
+    r = session.post(URL, json=payload, timeout=3)
     print(f"[SENT] status={r.status_code}")
 except Exception as e:
     print(f"[ERROR] {e}")

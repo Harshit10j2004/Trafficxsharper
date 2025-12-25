@@ -1,6 +1,8 @@
 from fastapi import FastAPI, HTTPException,status
 from pydantic import BaseModel
 from dotenv import load_dotenv
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 import os
 import logging
 import requests
@@ -15,6 +17,19 @@ logging.basicConfig(
     filename=os.getenv("LOG_FILE"),
     filemode='a'
 )
+
+retry_strategy = Retry(
+    total=5,
+    backoff_factor=1,
+    status_forcelist=[502, 503, 504],
+    allowed_methods=["GET", "POST"]
+)
+
+adapter = HTTPAdapter(max_retries=retry_strategy)
+
+session = requests.Session()
+session.mount("http://", adapter)
+session.mount("https://", adapter)
 
 
 deceng = FastAPI()
@@ -89,6 +104,6 @@ def decengfunc(metrics: Metrics):
 
         url = os.getenv("URL")
 
-        r = requests.post(url,json=payload,timeout=1)
+        r = session.post(url,json=payload,timeout=1)
         r.raise_for_status()
 
