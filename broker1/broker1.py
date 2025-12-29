@@ -8,6 +8,7 @@ import os
 import logging
 import mysql.connector
 import requests
+import json
 
 
 
@@ -54,6 +55,42 @@ adapter = HTTPAdapter(max_retries=retry_strategy)
 session = requests.Session()
 session.mount("http://", adapter)
 session.mount("https://", adapter)
+
+
+def scaling(message,email,ami,server_type,server_expected):
+    try:
+
+
+
+        if (server_expected < 10):
+            total_instance = 1
+        else:
+            total_instance = int(server_expected / 10)
+
+        payload = {
+            "message": message,
+            "email": email,
+            "ami": ami,
+            "server_type": server_type,
+            "total_instance": total_instance
+
+        }
+
+        url = os.getenv("DEC_URL")
+
+        r = session.post(url, json=payload, timeout=1)
+        r.raise_for_status()
+
+    except Exception as e:
+
+        logging.error(f"Sending request to decision engine api caused issue!!! {str(e)}")
+
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f" deceng api not responding: {str(e)}"
+
+        )
+
 
 @broker1api.post("/ingest")
 async def broker1func(metrics: Metrics):
@@ -110,6 +147,7 @@ async def broker1func(metrics: Metrics):
     server_expected = metrics.server_expected
     server_responded = metrics.server_responded
     missing_server = metrics.missing_server
+    global_scale_up_cooldown_seconds = 90
 
     missing_server_count = None
 
@@ -145,9 +183,113 @@ async def broker1func(metrics: Metrics):
         server_type = db[6]
 
 
-    finally:
-        cursor.close()
-        con.close()
+
+        query = "select last_scale_up_time from system_info where client_id = %s"
+
+        cursor.execute(query, (client_id,))
+
+        db = cursor.fetchone()
+
+        if not db:
+            logging.debug(f"loading data from db caused issue!! ")
+            raise HTTPException(status_code=404, detail="data not found")
+
+        last_scale_up_time = db[0]
+
+    except Exception as e:
+        print(e)
+
+    try:
+
+        try:
+            window_file = f"/home/ubuntu/tsx/data/client/{client_id}/window.txt"
+            cur_time = int(datetime.utcnow().timestamp())
+
+
+            if os.path.exists(window_file):
+                with open(window_file, "r") as f:
+                    state = json.load(f)
+            else:
+                state = {
+                    "high_cpu_count": 0,
+                    "low_cpu_count": 0,
+                    "last_cpu": None,
+                    "last_ts": 0
+                }
+
+            PANIC_DELTA = 20
+            panic_scale = False
+
+            if state["last_cpu"] is not None:
+                cpu_delta = cpu - state["last_cpu"]
+                if cpu_delta >= PANIC_DELTA:
+                    panic_scale = True
+
+            if cpu > threshold + buffer_z:
+                state["high_cpu_count"] += 1
+                state["low_cpu_count"] = 0
+
+            elif cpu < threshold - buffer_lower:
+                state["low_cpu_count"] += 1
+                state["high_cpu_count"] = 0
+
+
+            COOLDOWN = 300
+            in_cooldown = False
+
+            if last_scale_up_time:
+                if cur_time - int(last_scale_up_time) < COOLDOWN:
+                    in_cooldown = True
+
+            SCALE_TRIGGERED = False
+
+
+            if panic_scale and not in_cooldown:
+                message = "PANIC"
+                scaling(message, email, ami, server_type, server_expected)
+                SCALE_TRIGGERED = True
+
+
+            elif state["high_cpu_count"] >= 3 and not in_cooldown:
+                message = "UP"
+                scaling(message, email, ami, server_type, server_expected)
+                SCALE_TRIGGERED = True
+
+            state["last_cpu"] = cpu
+            state["last_ts"] = cur_time
+
+            with open(window_file, "w") as f:
+                json.dump(state, f, indent=2)
+
+            if SCALE_TRIGGERED:
+                con = mysql.connector.connect(
+                    host=os.getenv("DB_HOST"),
+                    user=os.getenv("DB_USER"),
+                    password=os.getenv("PASSWORD"),
+                    database=os.getenv("DATABASE")
+                )
+                cursor = con.cursor()
+                cursor.execute(
+                    "UPDATE system_info SET last_scale_up_time = %s WHERE client_id = %s",
+                    (cur_time, client_id)
+                )
+                con.commit()
+                cursor.close()
+                con.close()
+
+
+            if SCALE_TRIGGERED:
+                logging.info(f"SCALE-UP triggered for client {client_id}")
+            else:
+                logging.debug(f"No scale-up action for client {client_id}")
+
+        except Exception as e:
+            logging.error(f"Scaling logic failed: {str(e)}")
+
+
+
+    except Exception as e:
+        print(e)
 
     try:
 
@@ -175,42 +317,9 @@ async def broker1func(metrics: Metrics):
         )
 
 
-    if cpu >= threshold+buffer_z:
-
-        try:
-
-            message = "PANIC"
-
-            if(server_expected < 10):
-                total_instance = 1
-            else:
-                total_instance = int(server_expected/10)
-
-            payload = {
-                "message": message,
-                "email": email,
-                "ami": ami,
-                "server_type": server_type,
-                "total_instance": total_instance
 
 
-            }
-
-            url = os.getenv("DEC_URL")
-
-            r = session.post(url, json=payload, timeout=1)
-            r.raise_for_status()
-
-        except Exception as e:
-
-            logging.error(f"Sending request to dec_eng api caused issue!!! {str(e)}")
-
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail=f" dec_eng api not responding: {str(e)}"
-            )
-
-    elif cpu >= threshold-buffer_lower:
+    if cpu >= threshold-buffer_lower:
 
         try:
             payload = {
