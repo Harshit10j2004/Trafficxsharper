@@ -41,11 +41,11 @@ class Metrics(BaseModel):
     total_instance: int
     ami: str
     server_type: str
+    client_id: int
 
 
 @deceng.post("/deceng")
 def decengfunc(metrics: Metrics):
-
 
 
         message = metrics.message
@@ -53,8 +53,10 @@ def decengfunc(metrics: Metrics):
         total_instances = metrics.total_instance
         ami = metrics.ami
         server_type = metrics.server_type
+        client_id = metrics.client_id
 
         file=os.getenv("FILE")
+        ins_ids = f"/home/ubuntu/tsx/data/instances/{client_id}/instance.json"
 
         try:
 
@@ -79,31 +81,61 @@ def decengfunc(metrics: Metrics):
                 ]
             )
 
-            instance_id = response["Instances"][0]["InstanceId"]
+            instance_ids = [
+                inst["InstanceId"] for inst in response["Instances"]
+            ]
+
+            with open(ins_ids,"a") as f:
+
+                f.write(",".join(map(str, instance_ids)) + "\n")
 
         except Exception as e:
 
-            logging.error(f"AWS caused issue: {str(e)}")
+            logging.error(f"AWS caused issue during starting the server: {str(e)}")
 
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="aws have issue"
+                detail="aws have issue during starting servers "
             )
 
         with open(file , "w") as f:
 
             f.write(f"scale {message}")
-            f.write(f"instance {instance_id}")
+            f.write(f"instance {instance_ids}")
 
-        payload = {
-            "email": email,
-            "total_instances": total_instances,
-            "scale": "UP"
+        try:
+            client = boto3.client('elbv2')
 
-        }
+            response = client.register_targets(
+                TargetGroupArn=os.getenv("ALB"),
+                Targets=[
+                    {"Id": iid, "Port": 80} for iid in instance_ids
+                ]
+            )
+        except Exception as e:
 
-        url = os.getenv("URL")
+            logging.error(f"AWS caused issue during adding servers into the alb: {str(e)}")
 
-        r = session.post(url,json=payload,timeout=1)
-        r.raise_for_status()
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="aws have issue during connecting to alb "
+            )
+
+        try:
+
+            payload = {
+                "email": email,
+                "total_instances": total_instances,
+                "scale": "UP"
+
+            }
+
+            url = os.getenv("URL")
+
+            r = session.post(url,json=payload,timeout=1)
+            r.raise_for_status()
+
+        except Exception as e:
+
+            logging.debug("Error occur during send data to alert api",{str(e)})
 
