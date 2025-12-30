@@ -68,7 +68,7 @@ def save_json(path, data):
 
 
 
-def scaling(message,email,ami,server_type,server_expected):
+def scaling(message,email,ami,server_type,server_expected,client_id):
     try:
 
 
@@ -83,7 +83,8 @@ def scaling(message,email,ami,server_type,server_expected):
             "email": email,
             "ami": ami,
             "server_type": server_type,
-            "total_instance": total_instance
+            "total_instance": total_instance,
+            "client_id": client_id
 
         }
 
@@ -241,9 +242,9 @@ async def broker1func(metrics: Metrics):
     except Exception as e:
         print(e)
 
-    try:
 
-        try:
+
+    try:
 
             ml_window_file = f"/home/ubuntu/tsx/data/client/{client_id}/ml_window.txt"
             window_file = f"/home/ubuntu/tsx/data/client/{client_id}/window.txt"
@@ -272,7 +273,7 @@ async def broker1func(metrics: Metrics):
                 real_state["high_cpu_count"] = 0
 
             if real_state["high_cpu_count"] >= 3 and not in_cooldown:
-                scaling("UP", email, ami, server_type, server_expected)
+                scaling("UP", email, ami, server_type, server_expected,client_id)
 
 
                 real_state["high_cpu_count"] = 0
@@ -326,7 +327,7 @@ async def broker1func(metrics: Metrics):
                         and preds[0] < preds[1] < preds[2]
                         and preds[2] >= threshold + buffer_z
                 ):
-                    scaling("ML", email, ami, server_type, server_expected)
+                    scaling("ML", email, ami, server_type, server_expected,client_id)
 
                     real_state["high_cpu_count"] = 0
                     ml_state["predictions"] = []
@@ -349,14 +350,8 @@ async def broker1func(metrics: Metrics):
 
             logging.debug(f"No scale-up action for client {client_id}")
 
-        except Exception as e:
-            logging.error(f"Scaling logic failed: {str(e)}")
-
-
-
-
     except Exception as e:
-        print(e)
+            logging.error(f"Scaling logic failed: {str(e)}")
 
     try:
 
