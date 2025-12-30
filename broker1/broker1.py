@@ -56,6 +56,17 @@ session = requests.Session()
 session.mount("http://", adapter)
 session.mount("https://", adapter)
 
+def load_json(path, default):
+    if os.path.exists(path):
+        with open(path, "r") as f:
+            return json.load(f)
+    return default
+
+def save_json(path, data):
+    with open(path, "w") as f:
+        json.dump(data, f, indent=2)
+
+
 
 def scaling(message,email,ami,server_type,server_expected):
     try:
@@ -88,6 +99,38 @@ def scaling(message,email,ami,server_type,server_expected):
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f" deceng api not responding: {str(e)}"
+
+        )
+
+def prediction(timestamp,cpu,cpu_idle,totalram,ramused,diskusage,networkin,networkout,live_connections,freeze_window):
+    try:
+        payload = {
+            "timestamp": timestamp,
+            "cpu": cpu,
+            "cpu_idle": cpu_idle,
+            "total_ram": totalram,
+            "ram_used": ramused,
+            "disk_usage": diskusage,
+            "network_in": networkin,
+            "network_out": networkout,
+            "live_connections": live_connections,
+            "window_id": freeze_window
+
+        }
+
+        url = os.getenv("ML_URL")
+
+        r = session.post(url, json=payload, timeout=1)
+        r.raise_for_status()
+
+
+    except Exception as e:
+
+        logging.error(f"Sending request to ml api caused issue!!! {str(e)}")
+
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f" ml api not responding: {str(e)}"
 
         )
 
@@ -148,7 +191,6 @@ async def broker1func(metrics: Metrics):
     server_responded = metrics.server_responded
     missing_server = metrics.missing_server
     global_scale_up_cooldown_seconds = 90
-
     missing_server_count = None
 
     if(len(missing_server) == 0):
@@ -202,89 +244,114 @@ async def broker1func(metrics: Metrics):
     try:
 
         try:
+
+            ml_window_file = f"/home/ubuntu/tsx/data/client/{client_id}/ml_window.txt"
             window_file = f"/home/ubuntu/tsx/data/client/{client_id}/window.txt"
             cur_time = int(datetime.utcnow().timestamp())
 
 
-            if os.path.exists(window_file):
-                with open(window_file, "r") as f:
-                    state = json.load(f)
-            else:
-                state = {
-                    "high_cpu_count": 0,
-                    "low_cpu_count": 0,
-                    "last_cpu": None,
-                    "last_ts": 0
-                }
+            real_state = load_json(window_file, {
+                "high_cpu_count": 0
+            })
 
-            PANIC_DELTA = 20
-            panic_scale = False
-
-            if state["last_cpu"] is not None:
-                cpu_delta = cpu - state["last_cpu"]
-                if cpu_delta >= PANIC_DELTA:
-                    panic_scale = True
-
-            if cpu > threshold + buffer_z:
-                state["high_cpu_count"] += 1
-                state["low_cpu_count"] = 0
-
-            elif cpu < threshold - buffer_lower:
-                state["low_cpu_count"] += 1
-                state["high_cpu_count"] = 0
+            ml_state = load_json(ml_window_file, {
+                "predictions": []
+            })
 
 
             COOLDOWN = 300
             in_cooldown = False
-
             if last_scale_up_time:
                 if cur_time - int(last_scale_up_time) < COOLDOWN:
                     in_cooldown = True
 
-            SCALE_TRIGGERED = False
+
+            if cpu >= threshold + buffer_z:
+                real_state["high_cpu_count"] += 1
+            else:
+                real_state["high_cpu_count"] = 0
+
+            if real_state["high_cpu_count"] >= 3 and not in_cooldown:
+                scaling("UP", email, ami, server_type, server_expected)
 
 
-            if panic_scale and not in_cooldown:
-                message = "PANIC"
-                scaling(message, email, ami, server_type, server_expected)
-                SCALE_TRIGGERED = True
+                real_state["high_cpu_count"] = 0
+                ml_state["predictions"] = []
 
+                save_json(window_file, real_state)
+                save_json(ml_window_file, ml_state)
 
-            elif state["high_cpu_count"] >= 3 and not in_cooldown:
-                message = "UP"
-                scaling(message, email, ami, server_type, server_expected)
-                SCALE_TRIGGERED = True
-
-            state["last_cpu"] = cpu
-            state["last_ts"] = cur_time
-
-            with open(window_file, "w") as f:
-                json.dump(state, f, indent=2)
-
-            if SCALE_TRIGGERED:
-                con = mysql.connector.connect(
-                    host=os.getenv("DB_HOST"),
-                    user=os.getenv("DB_USER"),
-                    password=os.getenv("PASSWORD"),
-                    database=os.getenv("DATABASE")
-                )
-                cursor = con.cursor()
                 cursor.execute(
                     "UPDATE system_info SET last_scale_up_time = %s WHERE client_id = %s",
                     (cur_time, client_id)
                 )
                 con.commit()
-                cursor.close()
-                con.close()
+
+                logging.info(f"REAL SCALE-UP triggered for client {client_id}")
+                return {"status": "scaled_real"}
 
 
-            if SCALE_TRIGGERED:
-                logging.info(f"SCALE-UP triggered for client {client_id}")
-            else:
-                logging.debug(f"No scale-up action for client {client_id}")
+            in_gray_zone = (threshold - buffer_lower) <= cpu < threshold
+
+            if not in_gray_zone:
+
+                ml_state["predictions"] = []
+                save_json(ml_window_file, ml_state)
+
+
+            if in_gray_zone and not in_cooldown:
+                prediction(
+                    timestamp,
+                    cpu,
+                    cpu_idle,
+                    totalram,
+                    ramused,
+                    diskusage,
+                    networkin,
+                    networkout,
+                    live_connections,
+                    freeze_window
+                )
+
+                # willbe replace with real ml output
+                predicted_cpu = cpu + 5
+
+                ml_state["predictions"].append(predicted_cpu)
+                ml_state["predictions"] = ml_state["predictions"][-3:]
+
+                preds = ml_state["predictions"]
+
+                if (
+                        len(preds) == 3
+                        and preds[0] < preds[1] < preds[2]
+                        and preds[2] >= threshold + buffer_z
+                ):
+                    scaling("ML", email, ami, server_type, server_expected)
+
+                    real_state["high_cpu_count"] = 0
+                    ml_state["predictions"] = []
+
+                    save_json(window_file, real_state)
+                    save_json(ml_window_file, ml_state)
+
+                    cursor.execute(
+                        "UPDATE system_info SET last_scale_up_time = %s WHERE client_id = %s",
+                        (cur_time, client_id)
+                    )
+                    con.commit()
+
+                    logging.info(f"ML SCALE-UP triggered for client {client_id}")
+                    return {"status": "scaled_ml"}
+
+
+            save_json(window_file, real_state)
+            save_json(ml_window_file, ml_state)
+
+            logging.debug(f"No scale-up action for client {client_id}")
 
         except Exception as e:
             logging.error(f"Scaling logic failed: {str(e)}")
+
 
 
 
@@ -315,42 +382,6 @@ async def broker1func(metrics: Metrics):
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"File_writing_fails: {str(e)}"
         )
-
-
-
-
-    if cpu >= threshold-buffer_lower:
-
-        try:
-            payload = {
-                "timestamp": timestamp,
-                "cpu": cpu,
-                "cpu_idle": cpu_idle,
-                "total_ram": totalram,
-                "ram_used": ramused,
-                "disk_usage": diskusage,
-                "network_in": networkin,
-                "network_out": networkout,
-                "live_connections": live_connections,
-                "window_id": freeze_window
-
-            }
-
-            url = os.getenv("ML_URL")
-
-            r = session.post(url, json=payload, timeout=1)
-            r.raise_for_status()
-
-
-        except Exception as e:
-
-            logging.error(f"Sending request to ml api caused issue!!! {str(e)}")
-
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail=f" ml api not responding: {str(e)}"
-
-            )
 
     return {"status": "forwarded"}
 
