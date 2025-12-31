@@ -42,7 +42,7 @@ logging.basicConfig(
     filename=os.getenv("LOG_FILE"),
     filemode='a'
 )
-
+# understand these lines
 retry_strategy = Retry(
     total=5,
     backoff_factor=1,
@@ -103,7 +103,7 @@ def scaling(message,email,ami,server_type,server_expected,client_id):
 
         )
 
-def prediction(timestamp,cpu,cpu_idle,totalram,ramused,diskusage,networkin,networkout,live_connections,freeze_window):
+def prediction(timestamp,cpu,cpu_idle,totalram,ramused,diskusage,networkin,networkout,live_connections,freeze_window,missing_server_count):
     try:
         payload = {
             "timestamp": timestamp,
@@ -115,7 +115,8 @@ def prediction(timestamp,cpu,cpu_idle,totalram,ramused,diskusage,networkin,netwo
             "network_in": networkin,
             "network_out": networkout,
             "live_connections": live_connections,
-            "window_id": freeze_window
+            "window_id": freeze_window,
+            "missing_server_count": missing_server_count
 
         }
 
@@ -191,8 +192,7 @@ async def broker1func(metrics: Metrics):
     server_expected = metrics.server_expected
     server_responded = metrics.server_responded
     missing_server = metrics.missing_server
-    global_scale_up_cooldown_seconds = 90
-    missing_server_count = None
+
 
     if(len(missing_server) == 0):
         missing_server_count = 0
@@ -200,10 +200,8 @@ async def broker1func(metrics: Metrics):
 
         missing_server_count = len(missing_server)
 
-    row = [timestamp, cpu, cpu_idle, totalram, ramused, diskusage, networkin, networkout,live_connections, client_id,server_expected,server_responded,missing_server]
+    row = [timestamp, cpu, cpu_idle, totalram, ramused, diskusage, networkin, networkout,live_connections, client_id,server_expected,server_responded,missing_server_count]
 
-    file = os.getenv("TOTAL_AVG")
-    test_file = os.getenv("TEST")
 
     try:
 
@@ -250,7 +248,7 @@ async def broker1func(metrics: Metrics):
             window_file = f"/home/ubuntu/tsx/data/client/{client_id}/window.txt"
             cur_time = int(datetime.utcnow().timestamp())
 
-
+            # reserch again
             real_state = load_json(window_file, {
                 "high_cpu_count": 0
             })
@@ -311,7 +309,8 @@ async def broker1func(metrics: Metrics):
                     networkin,
                     networkout,
                     live_connections,
-                    freeze_window
+                    freeze_window,
+                    missing_server_count
                 )
 
                 # willbe replace with real ml output
@@ -360,14 +359,6 @@ async def broker1func(metrics: Metrics):
 
         with open(freeze_window_file,"w") as f:
             f.write(",".join(map(str, row)) + "\n")
-
-        with open(file,"a") as f:
-
-           f.write(",".join(str(v) for v in row) + "\n")
-
-        with open(test_file, "a") as f:
-
-            f.write(client_name)
 
     except Exception as e:
 

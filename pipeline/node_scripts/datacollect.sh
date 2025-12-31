@@ -1,7 +1,7 @@
 #!/bin/bash
 
 set -x
-
+#put the id_gen into this
 rec_ip=""
 SERVER_ID=$(cat "/home/ubuntu/tsx/data/server_id")
 
