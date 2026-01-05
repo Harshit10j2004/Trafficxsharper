@@ -180,7 +180,7 @@ def decengfunc(metrics: Metrics):
 
         except Exception as e:
 
-            logging.debug("Error occur during send data to alert api",{str(e)})
+            logging.debug(f"Error occur during send data to alert api {str(e)}")
 
 
         try:
