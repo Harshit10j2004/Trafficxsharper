@@ -3,6 +3,9 @@ from pydantic import BaseModel
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from dotenv import load_dotenv
+from pathlib import Path
+from sklearn.linear_model import LinearRegression
+import numpy as np
 import requests
 import os
 import logging
@@ -43,6 +46,61 @@ class Metrics(BaseModel):
     network_out: float
     live_connections: int
     window_id: int
+    client_id: int
+
+def count_rows(file_path):
+    if not file_path.exists():
+        return 0
+
+    with open(file_path, "r") as f:
+        return sum(1 for line in f if line.strip())
+
+
+def appendin(new_row,FILE_PATH):
+
+
+    rows = []
+    MAX_ROWS = 10
+
+
+    if FILE_PATH.exists():
+        with open(FILE_PATH, "r") as f:
+            rows = [line.strip() for line in f if line.strip()]
+
+
+    rows.append(",".join(map(str, new_row)))
+
+
+    rows = rows[-MAX_ROWS:]
+
+
+    with open(FILE_PATH, "w") as f:
+        f.write("\n".join(rows) + "\n")
+
+def load_metrics_by_column(FILE_PATH,EXPECTED_COLS):
+    if not FILE_PATH.exists():
+        raise FileNotFoundError("metrics file not found")
+
+    columns = [[] for _ in range(EXPECTED_COLS)]
+
+    with open(FILE_PATH, "r") as f:
+        for line_no, line in enumerate(f, start=1):
+            line = line.strip()
+            if not line:
+                continue
+
+            parts = line.split(",")
+
+            if len(parts) != EXPECTED_COLS:
+                raise ValueError(
+                    f"Line {line_no}: expected {EXPECTED_COLS} columns, got {len(parts)}"
+                )
+
+            for i, value in enumerate(parts):
+                columns[i].append(float(value))
+
+    return columns
+
 
 mlapi = FastAPI()
 
@@ -59,47 +117,102 @@ async def mlfunc(metrics: Metrics):
     timestamp = metrics.timestamp
     window_id = metrics.window_id
     live_connections = metrics.live_connections
+    client_id = metrics.client_id
+
+    base_file = os.getenv("FILE")
+
+    client_file = Path(f"{base_file}/{client_id}/file.csv")
+
+    row = [timestamp, cpu, cpu_idle, totalram, ramused, diskusage, networkin, networkout, live_connections]
+
+    try:
+
+        columns = load_metrics_by_column(client_file, EXPECTED_COLS=9)
+
+
+        cpu_l = np.array(columns[1])
+        cpu_idle_l = np.array(columns[2])
+        totalram_l = np.array(columns[3])
+        ramused_l = np.array(columns[4])
+        diskusage_l = np.array(columns[5])
+        networkin_l = np.array(columns[6])
+        networkout_l = np.array(columns[7])
+        live_connections_l = np.array(columns[8])
+
+        X = np.column_stack((cpu_idle_l,totalram_l,ramused_l,diskusage_l,networkin_l,networkout_l,live_connections_l))
+
+        y = cpu_l
+
+        model = LinearRegression()
+        model.fit(X, y)
+
+        n_row = [cpu_idle, totalram, ramused, diskusage, networkin, networkout, live_connections]
+
+        next_window = np.array([n_row])
+        next_cpu = model.predict(next_window)[0]
+
+        ret_value = next_cpu
+
+
+    except Exception as e:
+
+        ret_value = window_id
+
+        print(e)
 
 
 
+    MAX_ROWS = 10
 
-    if cpu>70:
+    try:
+        row_count = count_rows(client_file)
 
-        try:
-            email = "onxy.harsh123@gmail.com"
+        if row_count >= MAX_ROWS:
 
-            if(cpu >= 80):
-                message = "P"
+            write_file = appendin(row, client_file)
 
-            else:
+        else:
 
-                message = "NP"
+            with open(client_file, "a") as f:
+                f.write(",".join(map(str, row)) + "\n")
 
-            payload = {
+    except Exception as e:
 
-                "message": message,
-                "email": email,
-                "total_inc": 1
-            }
+        print(e)
 
-            url = os.getenv("URL")
-            session.post(url,json=payload)
-
-        except Exception as e:
-
-            logging.debug("ML api caused a error")
-
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail=f"{str(e)}"
-            )
+    return ret_value
 
 
+@mlapi.post("/insert")
+async def inserting(metrics: Metrics):
 
+    cpu = metrics.cpu
+    cpu_idle = metrics.cpu_idle
+    totalram = metrics.total_ram
+    ramused = metrics.ram_used
+    diskusage = metrics.disk_usage
+    networkin = metrics.network_in
+    networkout = metrics.network_out
+    timestamp = metrics.timestamp
+    window_id = metrics.window_id
+    live_connections = metrics.live_connections
+    client_id = metrics.client_id
 
+    MAX_ROWS = 10
 
+    row = [timestamp,cpu,cpu_idle,totalram,ramused,diskusage,networkin,networkout,live_connections]
 
+    base_file = os.getenv("FILE")
 
+    client_file = Path(f"{base_file}/{client_id}/file.csv")
 
+    row_count = count_rows(client_file)
 
+    if row_count >= MAX_ROWS:
 
+        write_file = appendin(row,client_file)
+
+    else:
+
+        with open(client_file,"a") as f:
+            f.write(",".join(map(str, row)) + "\n")
