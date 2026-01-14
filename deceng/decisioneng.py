@@ -44,7 +44,7 @@ class Metrics(BaseModel):
     client_id: int
 
 ec2 = boto3.client("ec2", region_name="ap-south-1")
-elbv2 = boto3.client('elbv2')
+elbv2 = boto3.client('elbv2', region_name="ap-south-1")
 
 
 def start_instance(ami,total_instances,server_type,pending_file):
