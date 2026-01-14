@@ -42,7 +42,6 @@ logging.basicConfig(
     filename=os.getenv("LOG_FILE"),
     filemode='a'
 )
-# understand these lines
 retry_strategy = Retry(
     total=5,
     backoff_factor=1,
@@ -90,7 +89,7 @@ def scaling(message,email,ami,server_type,server_expected,client_id):
 
         url = os.getenv("DEC_URL")
 
-        r = session.post(url, json=payload, timeout=1)
+        r = requests.post(url, json=payload, timeout=1)
         r.raise_for_status()
 
     except Exception as e:
@@ -103,7 +102,7 @@ def scaling(message,email,ami,server_type,server_expected,client_id):
 
         )
 
-def prediction(timestamp,cpu,cpu_idle,totalram,ramused,diskusage,networkin,networkout,live_connections,freeze_window,missing_server_count):
+def prediction(client_id,timestamp,cpu,cpu_idle,totalram,ramused,diskusage,networkin,networkout,live_connections,freeze_window,missing_server_count):
     try:
         payload = {
             "timestamp": timestamp,
@@ -116,7 +115,8 @@ def prediction(timestamp,cpu,cpu_idle,totalram,ramused,diskusage,networkin,netwo
             "network_out": networkout,
             "live_connections": live_connections,
             "window_id": freeze_window,
-            "missing_server_count": missing_server_count
+            "missing_server_count": missing_server_count,
+            "client_id": client_id
 
         }
 
@@ -129,6 +129,7 @@ def prediction(timestamp,cpu,cpu_idle,totalram,ramused,diskusage,networkin,netwo
 
         if 0 <= resp <= 100:
             next_cpu = float(resp)
+
             return next_cpu
 
         else:
@@ -267,28 +268,7 @@ async def broker1func(metrics: Metrics):
                 "predictions": []
             })
 
-            in_gray_zone = (threshold - buffer_lower) <= cpu < threshold
-
-            if cpu < in_gray_zone:
-                url = os.getenv("ML_URL/insert")
-
-                payload = {
-                    "timestamp": timestamp,
-                    "cpu": cpu,
-                    "cpu_idle": cpu_idle,
-                    "total_ram": totalram,
-                    "ram_used": ramused,
-                    "disk_usage": diskusage,
-                    "network_in": networkin,
-                    "network_out": networkout,
-                    "live_connections": live_connections,
-                    "window_id": freeze_window,
-                    "missing_server_count": missing_server_count
-
-                }
-
-                r = session.post(url, json=payload)
-                r.raise_for_status()
+            in_gray_zone = (threshold - buffer_lower) <= cpu < (threshold + buffer_z)
 
 
             COOLDOWN = 300
@@ -301,28 +281,10 @@ async def broker1func(metrics: Metrics):
             if cpu >= threshold + buffer_z:
                 real_state["high_cpu_count"] += 1
 
-                url = os.getenv("ML_URL/insert")
-
-                payload = {
-                    "timestamp": timestamp,
-                    "cpu": cpu,
-                    "cpu_idle": cpu_idle,
-                    "total_ram": totalram,
-                    "ram_used": ramused,
-                    "disk_usage": diskusage,
-                    "network_in": networkin,
-                    "network_out": networkout,
-                    "live_connections": live_connections,
-                    "window_id": freeze_window,
-                    "missing_server_count": missing_server_count
-
-                }
-
-                r = session.post(url, json=payload)
-                r.raise_for_status()
 
             else:
                 real_state["high_cpu_count"] = 0
+
 
             if real_state["high_cpu_count"] >= 3 and not in_cooldown:
                 scaling("UP", email, ami, server_type, server_expected,client_id)
@@ -348,12 +310,33 @@ async def broker1func(metrics: Metrics):
 
             if not in_gray_zone:
 
-                ml_state["predictions"] = []
+
                 save_json(ml_window_file, ml_state)
+                url = os.getenv("ML_URL/insert")
+
+                payload = {
+                    "timestamp": timestamp,
+                    "cpu": cpu,
+                    "cpu_idle": cpu_idle,
+                    "total_ram": totalram,
+                    "ram_used": ramused,
+                    "disk_usage": diskusage,
+                    "network_in": networkin,
+                    "network_out": networkout,
+                    "live_connections": live_connections,
+                    "window_id": freeze_window,
+                    "missing_server_count": missing_server_count,
+                    "client_id": client_id
+
+                }
+
+                r = session.post(url, json=payload)
+                r.raise_for_status()
 
 
             if in_gray_zone and not in_cooldown:
                 resp = prediction(
+                    client_id,
                     timestamp,
                     cpu,
                     cpu_idle,
@@ -370,8 +353,17 @@ async def broker1func(metrics: Metrics):
                 if 0 <= resp <= 100:
                     predicted_cpu = float(resp)
 
+                    if predicted_cpu > (threshold + buffer_z):
+
+                        ml_state["predictions"].append({
+                            "predicted_cpu": predicted_cpu
+                        })
+
+                    save_json(ml_window_file, ml_state)
+
                 else:
                     resp_retry = prediction(
+                        client_id,
                         timestamp,
                         cpu,
                         cpu_idle,

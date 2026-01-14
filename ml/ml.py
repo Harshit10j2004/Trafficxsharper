@@ -35,9 +35,9 @@ session.mount("https://", adapter)
 
 
 
-class Metrics(BaseModel):
-    timestamp : str
-    cpu : float
+class InsertMetrics(BaseModel):
+    timestamp: str
+    cpu: float
     cpu_idle: float
     total_ram: float
     ram_used: float
@@ -47,6 +47,23 @@ class Metrics(BaseModel):
     live_connections: int
     window_id: int
     client_id: int
+    missing_server_count: int
+
+
+class CleanMetrics(BaseModel):
+    timestamp: str
+    cpu: float
+    cpu_idle: float
+    total_ram: float
+    ram_used: float
+    disk_usage: float
+    network_in: float
+    network_out: float
+    live_connections: int
+    window_id: int
+    client_id: int
+    missing_server_count: int
+
 
 def count_rows(file_path):
     if not file_path.exists():
@@ -105,7 +122,7 @@ def load_metrics_by_column(FILE_PATH,EXPECTED_COLS):
 mlapi = FastAPI()
 
 @mlapi.post("/clean")
-async def mlfunc(metrics: Metrics):
+async def mlfunc(metrics: CleanMetrics):
 
     cpu = metrics.cpu
     cpu_idle = metrics.cpu_idle
@@ -123,21 +140,21 @@ async def mlfunc(metrics: Metrics):
 
     client_file = Path(f"{base_file}/{client_id}/file.csv")
 
-    row = [timestamp, cpu, cpu_idle, totalram, ramused, diskusage, networkin, networkout, live_connections]
+    row = [cpu, cpu_idle, totalram, ramused, diskusage, networkin, networkout, live_connections]
 
     try:
 
-        columns = load_metrics_by_column(client_file, EXPECTED_COLS=9)
+        columns = load_metrics_by_column(client_file, EXPECTED_COLS=8)
 
 
-        cpu_l = np.array(columns[1])
-        cpu_idle_l = np.array(columns[2])
-        totalram_l = np.array(columns[3])
-        ramused_l = np.array(columns[4])
-        diskusage_l = np.array(columns[5])
-        networkin_l = np.array(columns[6])
-        networkout_l = np.array(columns[7])
-        live_connections_l = np.array(columns[8])
+        cpu_l = np.array(columns[0])
+        cpu_idle_l = np.array(columns[1])
+        totalram_l = np.array(columns[2])
+        ramused_l = np.array(columns[3])
+        diskusage_l = np.array(columns[4])
+        networkin_l = np.array(columns[5])
+        networkout_l = np.array(columns[6])
+        live_connections_l = np.array(columns[7])
 
         X = np.column_stack((cpu_idle_l,totalram_l,ramused_l,diskusage_l,networkin_l,networkout_l,live_connections_l))
 
@@ -158,7 +175,7 @@ async def mlfunc(metrics: Metrics):
 
         ret_value = window_id
 
-        print(e)
+        logging.debug(str(e))
 
 
 
@@ -178,13 +195,13 @@ async def mlfunc(metrics: Metrics):
 
     except Exception as e:
 
-        print(e)
+        logging.debug(str(e))
 
     return ret_value
 
 
 @mlapi.post("/insert")
-async def inserting(metrics: Metrics):
+async def inserting(metrics: InsertMetrics):
 
     cpu = metrics.cpu
     cpu_idle = metrics.cpu_idle
@@ -200,7 +217,7 @@ async def inserting(metrics: Metrics):
 
     MAX_ROWS = 10
 
-    row = [timestamp,cpu,cpu_idle,totalram,ramused,diskusage,networkin,networkout,live_connections]
+    row = [cpu,cpu_idle,totalram,ramused,diskusage,networkin,networkout,live_connections]
 
     base_file = os.getenv("FILE")
 
