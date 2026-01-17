@@ -81,6 +81,7 @@ def count_rows(file_path,client_id,req_id):
         logging.exception("counting rows caused issue",
                           extra={"client_id":client_id, "req_id": req_id}
                           )
+        return 0
 
 
 def appendin(new_row,FILE_PATH,client_id,req_id):
@@ -105,11 +106,18 @@ def appendin(new_row,FILE_PATH,client_id,req_id):
         with open(FILE_PATH, "w") as f:
             f.write("\n".join(rows) + "\n")
 
+        logging.info(
+            "ml_dataset_row_appended",
+            extra={"client_id": client_id, "req_id": req_id}
+        )
+
+
     except Exception:
 
         logging.exception("Error caused during reading and writing the file at dataset",
                           extra={"client_id": client_id, "req_id": req_id}
                           )
+        raise
 
 def load_metrics_by_column(FILE_PATH,EXPECTED_COLS,client_id,req_id):
     if not FILE_PATH.exists():
@@ -139,6 +147,7 @@ def load_metrics_by_column(FILE_PATH,EXPECTED_COLS,client_id,req_id):
         logging.exception("Error caused during loading the metrics into the columns",
                           extra={"client_id": client_id, "req_id": req_id}
                           )
+        raise
 
     return columns
 
@@ -177,7 +186,7 @@ async def mlfunc(metrics: CleanMetrics):
 
     try:
 
-        columns = load_metrics_by_column(client_file,client_id,req_id, EXPECTED_COLS=8)
+        columns = load_metrics_by_column(client_file, EXPECTED_COLS=8,client_id=client_id,req_id=req_id)
 
 
         cpu_l = np.array(columns[0])
@@ -229,10 +238,18 @@ async def mlfunc(metrics: CleanMetrics):
 
     except Exception:
 
-        logging.exception("Error caused during counting rows",
+        logging.exception("ml_dataset_write_failed",
                           extra={"client_id": client_id, "req_id": req_id}
-
                           )
+        raise HTTPException(
+            status_code=500,
+            detail="ml_dataset_write_failed"
+        )
+
+    logging.info(
+        "ml_request_completed",
+        extra={"client_id": client_id, "req_id": req_id}
+    )
 
     return ret_value
 
@@ -254,7 +271,7 @@ async def inserting(metrics: InsertMetrics):
     req_id = metrics.req_id
 
     logging.info(
-        "ml_api_pred request received",
+        "ml_api_insert request received",
         extra={
             "req_id": req_id,
             "client_id": client_id,
@@ -273,9 +290,26 @@ async def inserting(metrics: InsertMetrics):
 
     if row_count >= MAX_ROWS:
 
-        write_file = appendin(row,client_file)
+        write_file = appendin(row,client_file,client_id, req_id)
 
     else:
 
-        with open(client_file,"a") as f:
-            f.write(",".join(map(str, row)) + "\n")
+        try:
+
+            with open(client_file,"a") as f:
+                f.write(",".join(map(str, row)) + "\n")
+
+        except Exception:
+
+            logging.exception("Error caused during writing the file at ml_insert",
+                              extra={"client_id": client_id, "req_id": req_id}
+                              )
+            raise HTTPException(
+                status_code=500,
+                detail="ml_dataset_write_failed"
+            )
+
+    logging.info(
+        "ml_request_completed",
+        extra={"client_id": client_id, "req_id": req_id}
+    )
