@@ -14,7 +14,7 @@ load_dotenv(r"/home/ubuntu/tsx/data/data.env")
 
 
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     filename=os.getenv("LOG_FILE"),
     filemode='a'
@@ -48,6 +48,7 @@ class InsertMetrics(BaseModel):
     window_id: int
     client_id: int
     missing_server_count: int
+    req_id: str
 
 
 class CleanMetrics(BaseModel):
@@ -63,58 +64,81 @@ class CleanMetrics(BaseModel):
     window_id: int
     client_id: int
     missing_server_count: int
+    req_id: str
 
 
-def count_rows(file_path):
+def count_rows(file_path,client_id,req_id):
     if not file_path.exists():
         return 0
 
-    with open(file_path, "r") as f:
-        return sum(1 for line in f if line.strip())
+    try:
+
+        with open(file_path, "r") as f:
+            return sum(1 for line in f if line.strip())
+
+    except Exception:
+
+        logging.exception("counting rows caused issue",
+                          extra={"client_id":client_id, "req_id": req_id}
+                          )
 
 
-def appendin(new_row,FILE_PATH):
+def appendin(new_row,FILE_PATH,client_id,req_id):
 
 
     rows = []
     MAX_ROWS = 10
 
-
-    if FILE_PATH.exists():
-        with open(FILE_PATH, "r") as f:
-            rows = [line.strip() for line in f if line.strip()]
+    try:
 
 
-    rows.append(",".join(map(str, new_row)))
+        if FILE_PATH.exists():
+            with open(FILE_PATH, "r") as f:
+                rows = [line.strip() for line in f if line.strip()]
+
+        rows.append(",".join(map(str, new_row)))
 
 
-    rows = rows[-MAX_ROWS:]
+        rows = rows[-MAX_ROWS:]
 
 
-    with open(FILE_PATH, "w") as f:
-        f.write("\n".join(rows) + "\n")
+        with open(FILE_PATH, "w") as f:
+            f.write("\n".join(rows) + "\n")
 
-def load_metrics_by_column(FILE_PATH,EXPECTED_COLS):
+    except Exception:
+
+        logging.exception("Error caused during reading and writing the file at dataset",
+                          extra={"client_id": client_id, "req_id": req_id}
+                          )
+
+def load_metrics_by_column(FILE_PATH,EXPECTED_COLS,client_id,req_id):
     if not FILE_PATH.exists():
         raise FileNotFoundError("metrics file not found")
 
-    columns = [[] for _ in range(EXPECTED_COLS)]
+    try:
 
-    with open(FILE_PATH, "r") as f:
-        for line_no, line in enumerate(f, start=1):
-            line = line.strip()
-            if not line:
-                continue
+        columns = [[] for _ in range(EXPECTED_COLS)]
 
-            parts = line.split(",")
+        with open(FILE_PATH, "r") as f:
+            for line_no, line in enumerate(f, start=1):
+                line = line.strip()
+                if not line:
+                    continue
 
-            if len(parts) != EXPECTED_COLS:
-                raise ValueError(
-                    f"Line {line_no}: expected {EXPECTED_COLS} columns, got {len(parts)}"
-                )
+                parts = line.split(",")
 
-            for i, value in enumerate(parts):
-                columns[i].append(float(value))
+                if len(parts) != EXPECTED_COLS:
+                    raise ValueError(
+                        f"Line {line_no}: expected {EXPECTED_COLS} columns, got {len(parts)}"
+                    )
+
+                for i, value in enumerate(parts):
+                    columns[i].append(float(value))
+    except Exception:
+
+        logging.exception("Error caused during loading the metrics into the columns",
+                          extra={"client_id": client_id, "req_id": req_id}
+                          )
 
     return columns
 
@@ -135,6 +159,15 @@ async def mlfunc(metrics: CleanMetrics):
     window_id = metrics.window_id
     live_connections = metrics.live_connections
     client_id = metrics.client_id
+    req_id = metrics.req_id
+
+    logging.info(
+        "ml_api_pred request received",
+        extra={
+            "req_id": req_id,
+            "client_id": client_id,
+        }
+    )
 
     base_file = os.getenv("FILE")
 
@@ -144,7 +177,7 @@ async def mlfunc(metrics: CleanMetrics):
 
     try:
 
-        columns = load_metrics_by_column(client_file, EXPECTED_COLS=8)
+        columns = load_metrics_by_column(client_file,client_id,req_id, EXPECTED_COLS=8)
 
 
         cpu_l = np.array(columns[0])
@@ -171,31 +204,35 @@ async def mlfunc(metrics: CleanMetrics):
         ret_value = next_cpu
 
 
-    except Exception as e:
+
+    except Exception:
 
         ret_value = window_id
 
-        logging.debug(str(e))
-
-
+        logging.exception("Error caused during data prediction",
+                          extra={"client_id": client_id,"req_id": req_id}
+                          )
 
     MAX_ROWS = 10
 
     try:
-        row_count = count_rows(client_file)
+        row_count = count_rows(client_file,client_id,req_id)
 
         if row_count >= MAX_ROWS:
 
-            write_file = appendin(row, client_file)
+            write_file = appendin(row, client_file,client_id, req_id)
 
         else:
 
             with open(client_file, "a") as f:
                 f.write(",".join(map(str, row)) + "\n")
 
-    except Exception as e:
+    except Exception:
 
-        logging.debug(str(e))
+        logging.exception("Error caused during counting rows",
+                          extra={"client_id": client_id, "req_id": req_id}
+
+                          )
 
     return ret_value
 
@@ -214,6 +251,15 @@ async def inserting(metrics: InsertMetrics):
     window_id = metrics.window_id
     live_connections = metrics.live_connections
     client_id = metrics.client_id
+    req_id = metrics.req_id
+
+    logging.info(
+        "ml_api_pred request received",
+        extra={
+            "req_id": req_id,
+            "client_id": client_id,
+        }
+    )
 
     MAX_ROWS = 10
 
@@ -223,7 +269,7 @@ async def inserting(metrics: InsertMetrics):
 
     client_file = Path(f"{base_file}/{client_id}/file.csv")
 
-    row_count = count_rows(client_file)
+    row_count = count_rows(client_file,client_id,req_id)
 
     if row_count >= MAX_ROWS:
 

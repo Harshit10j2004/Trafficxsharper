@@ -9,6 +9,7 @@ import logging
 import mysql.connector
 import requests
 import json
+import uuid
 
 
 
@@ -37,7 +38,7 @@ load_dotenv(r"/home/ubuntu/tsx/data/data.env")
 
 
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     filename=os.getenv("LOG_FILE"),
     filemode='a'
@@ -55,22 +56,32 @@ session = requests.Session()
 session.mount("http://", adapter)
 session.mount("https://", adapter)
 
-def load_json(path, default):
-    if os.path.exists(path):
-        with open(path, "r") as f:
-            return json.load(f)
-    return default
-
-def save_json(path, data):
-    with open(path, "w") as f:
-        json.dump(data, f, indent=2)
-
-
-
-def scaling(message,email,ami,server_type,server_expected,client_id):
+def load_json(path, default,client_id,req_id):
     try:
+        if os.path.exists(path):
+            with open(path, "r") as f:
+                return json.load(f)
+        return default
+
+    except Exception:
+
+        logging.exception("loding json caused issue",
+                          extra={"req_id":req_id,"client_id":client_id})
+
+def save_json(path, data,client_id,req_id):
+    try:
+        with open(path, "w") as f:
+            json.dump(data, f, indent=2)
+
+    except Exception:
+
+        logging.exception("writing json caused issue",
+                          extra={"req_id":req_id,"client_id":client_id})
 
 
+
+def scaling(message,email,ami,server_type,server_expected,client_id,req_id):
+    try:
 
         if (server_expected < 10):
             total_instance = 1
@@ -83,7 +94,8 @@ def scaling(message,email,ami,server_type,server_expected,client_id):
             "ami": ami,
             "server_type": server_type,
             "total_instance": total_instance,
-            "client_id": client_id
+            "client_id": client_id,
+            "req_id": req_id
 
         }
 
@@ -92,17 +104,18 @@ def scaling(message,email,ami,server_type,server_expected,client_id):
         r = requests.post(url, json=payload, timeout=1)
         r.raise_for_status()
 
-    except Exception as e:
+    except Exception:
 
-        logging.error(f"Sending request to decision engine api caused issue!!! {str(e)}")
+        logging.error("Sending request to decision engine api caused issue",
+                      extra={"req_id":req_id,"client_id":client_id})
 
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f" deceng api not responding: {str(e)}"
+            detail=f" deceng api not responding"
 
         )
 
-def prediction(client_id,timestamp,cpu,cpu_idle,totalram,ramused,diskusage,networkin,networkout,live_connections,freeze_window,missing_server_count):
+def prediction(client_id,timestamp,cpu,cpu_idle,totalram,ramused,diskusage,networkin,networkout,live_connections,freeze_window,missing_server_count,req_id):
     try:
         payload = {
             "timestamp": timestamp,
@@ -116,7 +129,8 @@ def prediction(client_id,timestamp,cpu,cpu_idle,totalram,ramused,diskusage,netwo
             "live_connections": live_connections,
             "window_id": freeze_window,
             "missing_server_count": missing_server_count,
-            "client_id": client_id
+            "client_id": client_id,
+            "req_id": req_id
 
         }
 
@@ -130,7 +144,11 @@ def prediction(client_id,timestamp,cpu,cpu_idle,totalram,ramused,diskusage,netwo
         if 0 <= resp <= 100:
             next_cpu = float(resp)
 
+            logging.info("Predicted cpu from ml",
+                         extra={"req_id":req_id,"client_id":client_id,"predicted_cpu": next_cpu})
+
             return next_cpu
+
 
         else:
 
@@ -138,57 +156,20 @@ def prediction(client_id,timestamp,cpu,cpu_idle,totalram,ramused,diskusage,netwo
             return window_id
 
 
-    except Exception as e:
+    except Exception:
 
-        logging.error(f"Sending request to ml api caused issue!!! {str(e)}")
+        logging.error(f"Sending request to ml api caused issue",
+                      extra={"req_id":req_id,"client_id":client_id})
 
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f" ml api not responding: {str(e)}"
+            detail=f" ml api not responding"
 
         )
 
 
 @broker1api.post("/ingest")
-async def broker1func(metrics: Metrics):
-
-
-
-    try:
-
-        con = mysql.connector.connect(
-                host= os.getenv("DB_HOST"),
-                user = os.getenv("DB_USER"),
-                password = os.getenv("PASSWORD"),
-                database = os.getenv("DATABASE")
-
-            )
-
-        cursor = con.cursor()
-    except Exception as e:
-
-        logging.error(f"Connection to database caused issue!!! {str(e)}")
-
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Database connection failed: {str(e)}"
-        )
-
-
-
-    timestamp = metrics.timestamp
-    client_ts = datetime.strptime(metrics.timestamp,"%Y-%m-%d %H:%M:%S.%f").replace(tzinfo=timezone.utc)
-    now = datetime.now(timezone.utc)
-    delta = abs((now - client_ts).total_seconds())
-
-    ALLOWED_SKEW = 60
-
-    if delta > ALLOWED_SKEW:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Timestamp out of sync"
-        )
-
+def broker1func(metrics: Metrics):
 
 
     cpu = metrics.cpu_percantage
@@ -205,11 +186,62 @@ async def broker1func(metrics: Metrics):
     server_responded = metrics.server_responded
     missing_server = metrics.missing_server
 
+    req_id = str(uuid.uuid4())
+
+    logging.info(
+        "Broker request received",
+        extra={
+            "req_id": req_id,
+            "client_id": client_id
+        }
+    )
+
+
+
+    try:
+
+        con = mysql.connector.connect(
+                host= os.getenv("DB_HOST"),
+                user = os.getenv("DB_USER"),
+                password = os.getenv("PASSWORD"),
+                database = os.getenv("DATABASE")
+
+            )
+
+        cursor = con.cursor()
+    except Exception:
+
+        logging.exception("Connection to database caused issue",
+                          extra={"req_id":req_id,"client_id":client_id}
+                          )
+
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Database connection failed"
+        )
+
+
+
+    timestamp = metrics.timestamp
+    client_ts = datetime.strptime(metrics.timestamp,"%Y-%m-%d %H:%M:%S.%f").replace(tzinfo=timezone.utc)
+    now = datetime.now(timezone.utc)
+    delta = abs((now - client_ts).total_seconds())
+
+    ALLOWED_SKEW = 60
+
+    if delta > ALLOWED_SKEW:
+        logging.error("data arrived late",
+                      extra={"req_id": req_id, "client_id": client_id}
+                      )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Timestamp out of sync"
+        )
+
 
     if(len(missing_server) == 0):
         missing_server_count = 0
     else:
-
         missing_server_count = len(missing_server)
 
     row = [timestamp, cpu, cpu_idle, totalram, ramused, diskusage, networkin, networkout,live_connections, client_id,server_expected,server_responded,missing_server_count]
@@ -224,7 +256,9 @@ async def broker1func(metrics: Metrics):
         db = cursor.fetchone()
 
         if not db:
-            logging.debug(f"loading client from db caused issue!! ")
+            logging.warning("loading client from db caused issue",
+                          extra={"req_id": req_id, "client_id": client_id,"table":"client_info"}
+                          )
             raise HTTPException(status_code=404, detail="Client not found")
 
         threshold = db[1]
@@ -243,14 +277,19 @@ async def broker1func(metrics: Metrics):
         db = cursor.fetchone()
 
         if not db:
-            logging.debug(f"loading data from db caused issue!! ")
+            logging.info("loading data from db caused issue",
+                         extra={"req_id": req_id, "client_id": client_id,"table":"system_info"}
+                         )
             raise HTTPException(status_code=404, detail="data not found")
 
         last_scale_up_time = db[0]
 
-    except Exception as e:
-        print(e)
+    except Exception:
 
+        logging.exception("Issue raised in data collection from db",
+                          extra={"req_id": req_id, "client_id": client_id}
+                          )
+        raise HTTPException(500, "db failure")
 
 
     try:
@@ -262,11 +301,11 @@ async def broker1func(metrics: Metrics):
 
             real_state = load_json(window_file, {
                 "high_cpu_count": 0
-            })
+            },client_id,req_id)
 
             ml_state = load_json(ml_window_file, {
                 "predictions": []
-            })
+            },client_id,req_id)
 
             in_gray_zone = (threshold - buffer_lower) <= cpu < (threshold + buffer_z)
 
@@ -287,7 +326,7 @@ async def broker1func(metrics: Metrics):
 
 
             if real_state["high_cpu_count"] >= 3 and not in_cooldown:
-                scaling("UP", email, ami, server_type, server_expected,client_id)
+                scaling("UP", email, ami, server_type, server_expected,client_id,req_id)
 
 
                 real_state["high_cpu_count"] = 0
@@ -296,16 +335,26 @@ async def broker1func(metrics: Metrics):
                 save_json(window_file, real_state)
                 save_json(ml_window_file, ml_state)
 
-                cursor.execute(
-                    "UPDATE system_info SET last_scale_up_time = %s WHERE client_id = %s",
-                    (cur_time, client_id)
-                )
-                con.commit()
+                try:
 
-                logging.info(f"REAL SCALE-UP triggered for client {client_id}")
+                    cursor.execute(
+                        "UPDATE system_info SET last_scale_up_time = %s WHERE client_id = %s",
+                        (cur_time, client_id)
+                    )
+                    con.commit()
+
+                except Exception:
+
+                    logging.exception("updating the db last_scale_up_time caused issue",
+                                      extra={"req_id":req_id,"client_id":client_id}
+
+                                      )
+                    raise
+
+                logging.info(f" SCALE-UP triggered",
+                             extra={"req_id": req_id, "client_id": client_id}
+                             )
                 return {"status": "scaled_real"}
-
-
 
 
             if not in_gray_zone:
@@ -330,11 +379,23 @@ async def broker1func(metrics: Metrics):
 
                 }
 
-                r = session.post(url, json=payload)
-                r.raise_for_status()
+                try:
+
+                    r = session.post(url, json=payload)
+                    r.raise_for_status()
+
+                except Exception:
+
+                    logging.exception("inserting api of ml caused issue",
+                                      extra={"req_id":req_id,"client_id":client_id})
+
+                logging.info("insert api of ml data send",
+                             extra={"req_id":req_id,"client_id":client_id})
 
 
             if in_gray_zone and not in_cooldown:
+
+
                 resp = prediction(
                     client_id,
                     timestamp,
@@ -347,7 +408,8 @@ async def broker1func(metrics: Metrics):
                     networkout,
                     live_connections,
                     freeze_window,
-                    missing_server_count
+                    missing_server_count,
+                    req_id
                 )
 
                 if 0 <= resp <= 100:
@@ -374,7 +436,8 @@ async def broker1func(metrics: Metrics):
                         networkout,
                         live_connections,
                         freeze_window,
-                        missing_server_count
+                        missing_server_count,
+                        req_id
                     )
 
                     if 0 <= resp_retry <= 100:
@@ -382,7 +445,8 @@ async def broker1func(metrics: Metrics):
                     else:
 
                         logging.error(
-                            f"ML prediction failed twice for client. window_id={resp_retry}"
+                            "ML prediction failed twice for client",
+                            extra={"req_id": req_id, "client_id": client_id,"window_id": resp_retry}
                         )
                         return
 
@@ -396,7 +460,7 @@ async def broker1func(metrics: Metrics):
                         and preds[0] < preds[1] < preds[2]
                         and preds[2] >= threshold + buffer_z
                 ):
-                    scaling("ML", email, ami, server_type, server_expected,client_id)
+                    scaling("ML", email, ami, server_type, server_expected,client_id,req_id)
 
                     real_state["high_cpu_count"] = 0
                     ml_state["predictions"] = []
@@ -404,13 +468,24 @@ async def broker1func(metrics: Metrics):
                     save_json(window_file, real_state)
                     save_json(ml_window_file, ml_state)
 
-                    cursor.execute(
-                        "UPDATE system_info SET last_scale_up_time = %s WHERE client_id = %s",
-                        (cur_time, client_id)
-                    )
-                    con.commit()
+                    try:
 
-                    logging.info(f"ML SCALE-UP triggered for client {client_id}")
+                        cursor.execute(
+                            "UPDATE system_info SET last_scale_up_time = %s WHERE client_id = %s",
+                            (cur_time, client_id)
+                        )
+                        con.commit()
+
+                    except Exception:
+
+                        logging.exception("writing in db caused issue",
+                                          extra={"req_id": req_id, "client_id": client_id}
+                                          )
+
+
+
+                    logging.info("SCALE-UP triggered by ml preds",
+                                 extra={"req_id":req_id,"client_id":client_id})
                     return {"status": "scaled_ml"}
 
 
@@ -419,11 +494,10 @@ async def broker1func(metrics: Metrics):
             save_json(ml_window_file, ml_state)
 
 
-
-            logging.debug(f"No scale-up action for client {client_id}")
-
     except Exception as e:
-            logging.error(f"Scaling logic failed: {str(e)}")
+            logging.exception(f"Scaling logic failed",
+                              extra={"req_id":req_id,"client_id":client_id})
+            raise HTTPException(500, "scaling logic failed")
 
     try:
 
@@ -433,14 +507,19 @@ async def broker1func(metrics: Metrics):
         with open(freeze_window_file,"w") as f:
             f.write(",".join(map(str, row)) + "\n")
 
-    except Exception as e:
+    except Exception:
 
-        logging.debug(f"Writing the files caused issue!!! {str(e)}")
+        logging.exception(f"Writing the files caused issue",
+                          extra={"req_id":req_id,"client_id":client_id})
 
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"File_writing_fails: {str(e)}"
+            detail=f"File_writing_fails"
         )
+
+    finally:
+        cursor.close()
+        con.close()
 
     return {"status": "forwarded"}
 
