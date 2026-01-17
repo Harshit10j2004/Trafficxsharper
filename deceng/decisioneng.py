@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException,status
+from fastapi import FastAPI, HTTPException,status,BackgroundTasks
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from requests.adapters import HTTPAdapter
@@ -42,12 +42,13 @@ class Metrics(BaseModel):
     ami: str
     server_type: str
     client_id: int
+    req_id: str
 
 ec2 = boto3.client("ec2", region_name="ap-south-1")
 elbv2 = boto3.client('elbv2', region_name="ap-south-1")
 
 
-def start_instance(ami,total_instances,server_type,pending_file):
+def start_instance(ami,total_instances,server_type,pending_file,req_id,client_id):
     try:
 
 
@@ -79,36 +80,56 @@ def start_instance(ami,total_instances,server_type,pending_file):
 
         return instance_ids
 
-        return instance_ids
-    except Exception as e:
 
-        logging.error(f"AWS caused issue during starting the server: {str(e)}")
+    except Exception:
+
+        logging.exception(
+            "AWS caused issue during starting the server",
+            extra={"Req_id":req_id,"client_id":client_id}
+        )
 
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="aws have issue during starting servers "
         )
 
-def health_check(instance_id):
+def health_check(instance_id,req_id,client_id):
 
-    waiter = ec2.get_waiter("instance_status_ok")
-    waiter.wait(
-        InstanceIds=[instance_id],
-        WaiterConfig={
-            "Delay": 10,
-            "MaxAttempts": 30
-        }
-    )
+    try:
 
-    return "healthy"
+        waiter = ec2.get_waiter("instance_status_ok")
+        waiter.wait(
+            InstanceIds=[instance_id],
+            WaiterConfig={
+                "Delay": 10,
+                "MaxAttempts": 30
+            }
+        )
 
-def register_to_alb(instance_id, port):
-    elbv2.register_targets(
-        TargetGroupArn=os.getenv("ALB"),
-        Targets=[{"Id": instance_id, "Port": port}]
-    )
+        return "healthy"
+    except Exception:
 
-def pop_next_instance(pending_file):
+        logging.exception("EC2 waiting time caused error",
+                          extra={"Req_id": req_id, "client_id": client_id}
+                          )
+        raise
+
+def register_to_alb(instance_id, port,req_id,client_id):
+    try:
+
+        elbv2.register_targets(
+            TargetGroupArn=os.getenv("ALB"),
+            Targets=[{"Id": instance_id, "Port": port}]
+        )
+        logging.info("instance connected to ALB",
+                     extra={"Instance_id":instance_id,"Req_id": req_id, "client_id": client_id}
+                     )
+    except Exception:
+
+        logging.exception("AWS caused during registering during alb")
+        raise
+
+def pop_next_instance(pending_file,req_id,client_id):
     if not os.path.exists(pending_file):
         return None
 
@@ -123,33 +144,39 @@ def pop_next_instance(pending_file):
     with open(pending_file, "w") as f:
         for l in lines[1:]:
             f.write(l + "\n")
+    logging.info(
+        "Popped instance from pending queue",
+        extra={"instance_id": iid, "remaining": len(lines),"req_id":req_id,"client_id":client_id}
+    )
 
     return iid
 
-def process_instances(pending_file, joined_file, port=80):
+def process_instances(pending_file, joined_file,req_id, client_id,port=80):
     while True:
-        instance_id = pop_next_instance(pending_file)
+        instance_id = pop_next_instance(pending_file,req_id,client_id)
 
         if not instance_id:
             break
 
         try:
-            health_check(instance_id)
+            health_check(instance_id,req_id,client_id)
 
-            register_to_alb(instance_id, port)
+            register_to_alb(instance_id, port,req_id,client_id)
 
             with open(joined_file, "a") as f:
                 f.write(instance_id + "\n")
 
-            logging.info(f"{instance_id} joined ALB")
 
         except Exception as e:
-            logging.error(f"{instance_id} failed onboarding: {str(e)}")
+            logging.exception(
+                "Issue raised during onboarding",
+                extra={"Instance": instance_id,"req_id":req_id,"client_id":client_id}
+            )
 
 
 
 @deceng.post("/deceng")
-def decengfunc(metrics: Metrics):
+def decengfunc(metrics: Metrics,bg:BackgroundTasks):
 
 
         message = metrics.message
@@ -158,51 +185,71 @@ def decengfunc(metrics: Metrics):
         ami = metrics.ami
         server_type = metrics.server_type
         client_id = metrics.client_id
+        req_id = metrics.req_id
 
-        file=os.getenv("FILE")
         base_path = f"/home/ubuntu/tsx/data/instances/{client_id}"
         pending_file = f"{base_path}/pending.txt"
         joined_file = f"{base_path}/joined.txt"
 
-        try:
 
-            payload = {
-                "email": email,
+        logging.info(
+            "DECENG request received",
+            extra={
+                "req_id": req_id,
+                "client_id": client_id,
                 "total_instances": total_instances,
-                "scale": "UP"
-
+                "ami": ami,
+                "server_type": server_type
             }
-
-            url = os.getenv("URL")
-
-            r = session.post(url,json=payload,timeout=1)
-            r.raise_for_status()
-
-        except Exception as e:
-
-            logging.debug(f"Error occur during send data to alert api {str(e)}")
-
+        )
 
         try:
+
 
             instance_id = start_instance(
                 ami,
                 total_instances,
                 server_type,
-                pending_file
+                pending_file,
+                req_id,
+                client_id
             )
 
-            process_instances(pending_file, joined_file)
+            bg.add_task(process_instances, pending_file, joined_file,req_id,client_id)
 
-            return {
-                "status": "scaled_up",
-                "instances": instance_id
-            }
-
-        except Exception as e:
-            logging.error(f"aws issue caused error {str(e)}")
+        except Exception:
+            logging.exception(
+                "AWS caused issue"
+            )
 
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="aws issue"
             )
+
+        try:
+
+            payload = {
+                "email": email,
+                "client_id": client_id,
+                "total_instances": total_instances,
+                "scale": "UP",
+                "req_id": req_id
+
+            }
+
+            url = os.getenv("URL")
+
+            r = session.post(url,json=payload,timeout=10)
+            r.raise_for_status()
+
+            return {
+                "status": "requsted"
+            }
+
+        except Exception:
+
+            logging.exception("Failed to notify alert service",
+                              extra={"client_id":client_id,"req_id":req_id}
+                              )
+
