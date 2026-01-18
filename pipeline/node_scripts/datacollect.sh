@@ -1,25 +1,38 @@
 #!/bin/bash
+set -euo pipefail
 
-set -x
+source /home/ubuntu/data.env
 
+ID_FILE="$Server_id"
+mkdir -p "$(dirname "$ID_FILE")"
 
-rec_ip=""
-SERVER_ID=$(cat "/home/ubuntu/tsx/data/server_id")
+if [ ! -f "$ID_FILE" ]; then
+  uuidgen > "$ID_FILE"
+fi
 
-cpu=$(mpstat 1 1 | grep Average | awk '{print $12}')
-cpu_used_percent=$(echo "100 - $cpu" | bc)
-mem=$(free -m | grep Mem | awk '{print $2}')
-mem_used=$(free -m | grep Mem | awk '{print $3}')
-disk=$(df -h --total | grep total | awk '{print $5}' | tr -d '%')
-network_in_bytes=$(echo $network_stats | awk '{printf "%.0f", $1 * 1024}')
-network_out_bytes=$(echo $network_stats | awk '{printf "%.0f", $2 * 1024}')
-connection=$(ss -H state established | wc -l)
+SERVER_ID="$(cat "$ID_FILE")"
+export SERVER_ID
 
-line="$cpu_used_percent,$cpu,$mem,$mem_used,$disk,$network_in_bytes,$network_out_bytes,$connection"
+timestamp=$(date +%s)
 
-sleep 5
+cpu_idle=$(mpstat 1 1 | awk '/Average/ {print $12}')
+cpu_used=$(echo "100 - $cpu_idle" | bc)
+
+mem_total=$(free -m | awk '/Mem:/ {print $2}')
+mem_used=$(free -m | awk '/Mem:/ {print $3}')
+
+disk_used=$(df -h --total | awk '/total/ {gsub("%","",$5); print $5}')
+
+IFACE=$(ip route get 1.1.1.1 | awk '{print $5; exit}')
+read net_in net_out < <(
+  awk -v iface="$IFACE" '$1 ~ iface":" {print $2, $10}' /proc/net/dev
+)
+
+connections=$(ss -H state established | wc -l)
+
+line="$timestamp,$cpu_used,$cpu_idle,$mem_total,$mem_used,$disk_used,$net_in,$net_out,$connections,$SERVER_ID"
 
 {
-    echo "usage_${SERVER_ID}.log"
-    echo "$line"
-} | ncat $rec_ip 9000
+  echo "usage_${SERVER_ID}.log"
+  echo "$line"
+} | ncat "$rec_ip" 9000
