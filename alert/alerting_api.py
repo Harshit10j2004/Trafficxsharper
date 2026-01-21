@@ -11,7 +11,7 @@ load_dotenv(r"/home/ubuntu/tsx/data/data.env")
 
 logging.basicConfig(
     level= logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
+    format='%(asctime)s - %(levelname)s - req_id=%(req_id)s client_id=%(client_id)s - %(message)s',
     filename = os.getenv("LOG_FILE"),
     filemode='a'
 )
