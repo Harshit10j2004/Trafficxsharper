@@ -1,4 +1,13 @@
 #!/bin/bash
+set -euo pipefail
 
-read fname
-cat > /home/ubuntu/tsx/data/"$fname"
+read -r fname
+
+if [[ -z "$fname" ]]; then
+  echo "ERROR: empty filename" >&2
+  exit 1
+fi
+
+TARGET="/home/ubuntu/tsx/data/$fname"
+
+cat > "$TARGET"

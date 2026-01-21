@@ -69,31 +69,37 @@ def sync_server_info():
         for server in new_servers:
             f.write(server + "\n")
 
+def for_backends():
+    v = [0.0] * 8
+    count = 0
 
-v = [0.0] * 8
-count = 0
+    for file_path in glob.glob(f"{LOCATION}/*.log"):
+        try:
+            with open(file_path) as f:
+                line = f.read().strip()
 
-for file_path in glob.glob(f"{LOCATION}/*.log"):
-    try:
-        with open(file_path) as f:
-            line = f.read().strip()
+            parts = line.split(",")
+            if len(parts) != 8:
+                continue  # corrupted file
 
-        parts = line.split(",")
-        if len(parts) != 8:
-            continue  # corrupted file
+            values = list(map(float, parts))
 
-        values = list(map(float, parts))
+            for i in range(8):
+                v[i] += values[i]
 
-        for i in range(8):
-            v[i] += values[i]
+            count += 1
 
-        count += 1
+        except Exception:
+            continue
 
-    except Exception:
-        continue
+    if count > 0:
+        v = [x / count for x in v]
 
-if count > 0:
-    v = [x / count for x in v]
+    return v,count
+
+
+
+
 
 current_servers = read_current_servers()
 sync_server_info()
@@ -117,6 +123,10 @@ if TOTAL_SERVER_COUNT.exists():
             f.write(str(server_responded))
 
 now = datetime.now(timezone.utc)
+
+v, backend_count = for_backends()
+if not v:
+    v = [0.0] * 8
 
 payload = {
     "timestamp": now.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
