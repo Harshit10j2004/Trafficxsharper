@@ -39,7 +39,7 @@ load_dotenv(r"/home/ubuntu/tsx/data/data.env")
 
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
+    format='%(asctime)s - %(levelname)s - req_id=%(req_id)s client_id=%(client_id)s - %(message)s',
     filename=os.getenv("LOG_FILE"),
     filemode='a'
 )
@@ -421,7 +421,7 @@ def broker1func(metrics: Metrics):
                             "predicted_cpu": predicted_cpu
                         })
 
-                    save_json(ml_window_file, ml_state)
+                    save_json(ml_window_file, ml_state,client_id,req_id)
 
                 else:
                     resp_retry = prediction(
@@ -490,8 +490,8 @@ def broker1func(metrics: Metrics):
 
 
 
-            save_json(window_file, real_state)
-            save_json(ml_window_file, ml_state)
+            save_json(window_file, real_state,client_id,req_id)
+            save_json(ml_window_file, ml_state,client_id,req_id)
 
 
     except Exception as e:
