@@ -1,10 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 
-source /home/ubuntu/data.env
+source /home/ubuntu/tsx/data/data.env
 
 SERVER_ID="$(cat "$Server_id")"
-timestamp=$(date +%s)
 
 STATUS_URL="http://127.0.0.1/__nginx_status"
 raw="$(curl -sf "$STATUS_URL")"
@@ -17,7 +16,7 @@ reading=$(echo "$raw" | awk '/Reading:/ {print $2}')
 writing=$(echo "$raw" | awk '/Writing:/ {print $4}')
 waiting=$(echo "$raw" | awk '/Waiting:/ {print $6}')
 
-line="$timestamp,$active,$accepts,$handled,$requests,$reading,$writing,$waiting,$SERVER_ID"
+line="$active,$accepts,$handled,$requests,$reading,$writing,$waiting"
 
 {
   echo "nginx_${SERVER_ID}.log"
