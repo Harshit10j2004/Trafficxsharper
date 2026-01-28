@@ -4,7 +4,7 @@ set -euo pipefail
 read -r fname
 
 if [[ -z "$fname" ]]; then
-  echo "ERROR: empty filename" >&2
+  echo "ERROR: empty filename" > "${file}"
   exit 1
 fi
 

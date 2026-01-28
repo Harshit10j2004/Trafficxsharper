@@ -23,6 +23,8 @@ session.mount("https://", adapter)
 load_dotenv("/home/ubuntu/tsx/sysdata/data.env")
 
 LOCATION = Path(os.getenv("FILE"))
+Web_file = Path(os.getenv("webfile"))
+Last_data = Path(os.getenv("last_path"))
 SERVER_INFO = Path(os.getenv("SERV_INFO"))
 TOTAL_SERVER_COUNT = Path(os.getenv("SERV_CNT"))
 URL = os.getenv("URL")
@@ -80,7 +82,7 @@ def for_backends():
 
             parts = line.split(",")
             if len(parts) != 8:
-                continue  # corrupted file
+                continue
 
             values = list(map(float, parts))
 
@@ -97,7 +99,65 @@ def for_backends():
 
     return v,count
 
+def load_last():
 
+    try:
+
+        with open(Last_data,"r") as f:
+            line = f.read().strip()
+
+            if not line:
+
+                update_load(0,0)
+                return 0.0, 0.0
+        accepts, request = map(float, line.split())
+        return  accepts, request
+    except Exception as e:
+        print("issue in load_last")
+
+        return 0.0,0.0
+
+def update_load(accepts,request):
+
+    try:
+
+        with open(Last_data,"w") as f:
+
+            f.write(f"{int(accepts)} {int(request)}\n")
+
+
+
+    except Exception as e:
+
+        print(e)
+
+def webser():
+
+    w = [0.0] * 7
+    count_w = 0
+
+    for i in glob.glob(f"{Web_file}/*.log"):
+        try:
+
+            with open(i) as f:
+
+                line = f.read().strip()
+
+            parts = line.split(",")
+            if len(parts) != 7:
+                continue
+
+            values = list(map(float, parts))
+
+            for j in range(7):
+                w[j] += values[j]
+
+            count_w+=1
+
+        except Exception as e:
+            print(e)
+
+    return w,count_w
 
 
 
@@ -125,6 +185,28 @@ if TOTAL_SERVER_COUNT.exists():
 now = datetime.now(timezone.utc)
 
 v, backend_count = for_backends()
+
+w, web_count= webser()
+
+accepts = w[1]
+request = w[3]
+
+Time = 180
+
+last_accepts , last_request = load_last()
+
+rps = (request - last_request) / Time
+conn_rate = (accepts - last_accepts) / Time
+pressure = w[6] + w[4]
+rps_per_node = rps / max(web_count, 1)
+
+
+print(rps)
+print(conn_rate)
+
+update_load(accepts, request)
+
+
 if not v:
     v = [0.0] * 8
 
@@ -141,6 +223,13 @@ payload = {
     "network_in": v[5],
     "network_out": v[6],
     "live_connections": v[7],
+
+    "rps": rps,
+    "conn_rate": conn_rate,
+    "queue_pressure": pressure,
+    "rps_per_node": rps_per_node,
+    
+
 
     "server_expected": server_expected,
     "server_responded": server_responded,
