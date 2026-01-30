@@ -12,7 +12,6 @@ import json
 import uuid
 
 
-
 class Metrics(BaseModel):
 
     timestamp : str
@@ -29,6 +28,10 @@ class Metrics(BaseModel):
     server_expected: int
     server_responded: int
     missing_server: list[str]
+    rps: float
+    conn_rate: float
+    queue_pressure: float
+    rps_per_node: float
 
 
 broker1api = FastAPI()
@@ -78,6 +81,70 @@ def save_json(path, data,client_id,req_id):
         logging.exception("writing json caused issue",
                           extra={"req_id":req_id,"client_id":client_id})
 
+def w_flactuation(path, data,client_id,req_id):
+
+    try:
+
+        with open(path,"w") as f:
+            f.write(data)
+
+    except Exception:
+
+        logging.exception("writing flacuation file caused issue",
+                          extra={"req_id": req_id, "client_id": client_id})
+
+def r_flactuation(path,client_id,req_id):
+    try:
+
+        with open(path, "r") as f:
+            curdata = f.read()
+
+    except Exception:
+
+        logging.exception("writing flacuation file caused issue",
+                          extra={"req_id": req_id, "client_id": client_id})
+
+    return curdata
+
+def load_window(path):
+    if not path.exists():
+        return []
+
+    with open(path, "r") as f:
+        return [
+            float(line.strip())
+            for line in f
+            if line.strip()
+        ]
+
+
+def write_window(path, new_value, size=3):
+    values = []
+
+    if path.exists():
+        with open(path, "r") as f:
+            values = [
+                line.strip()
+                for line in f
+                if line.strip()
+            ]
+
+    values.insert(0, str(float(new_value)))
+
+    values = values[:size]
+
+    with open(path, "w") as f:
+        f.write("\n".join(values) + "\n")
+
+def increasing_window(values):
+    if (
+        len(values) == 3 and
+        values[2] < values[1] < values[0]
+    ):
+        return 1
+    else:
+
+        return 0
 
 
 def scaling(message,email,ami,server_type,server_expected,client_id,req_id):
@@ -185,6 +252,10 @@ def broker1func(metrics: Metrics):
     server_expected = metrics.server_expected
     server_responded = metrics.server_responded
     missing_server = metrics.missing_server
+    rps = metrics.rps
+    rps_per_node = metrics.rps_per_node
+    conn_rate = metrics.conn_rate
+    queue_pressure = metrics.queue_pressure
 
     req_id = str(uuid.uuid4())
 
@@ -296,6 +367,9 @@ def broker1func(metrics: Metrics):
 
             ml_window_file = f"/home/ubuntu/tsx/data/client/{client_id}/ml_window.txt"
             window_file = f"/home/ubuntu/tsx/data/client/{client_id}/window.txt"
+            fluc_file = f"/home/ubuntu/tsx/data/client/{client_id}/fluc.txt"
+            queue_file = f"/home/ubuntu/tsx/data/client/{client_id}/queue.txt"
+            rps_file = f"/home/ubuntu/tsx/data/client/{client_id}/rps.txt"
             cur_time = int(datetime.utcnow().timestamp())
 
 
@@ -309,6 +383,21 @@ def broker1func(metrics: Metrics):
 
             in_gray_zone = (threshold - buffer_lower) <= cpu < (threshold + buffer_z)
 
+            for_queue = write_window(queue_file,queue_pressure)
+            for_rps = write_window(rps_file,rps)
+
+            load_queue = load_window(queue_file)
+            load_rps = load_window(rps_file)
+
+            queue_increasing = increasing_window(load_queue)
+            rps_increasing = increasing_window(load_rps)
+
+            app_red_zone = False
+
+            if(queue_increasing == 1 and rps_increasing == 1):
+
+                app_red_zone = True
+
 
             COOLDOWN = 300
             in_cooldown = False
@@ -316,13 +405,25 @@ def broker1func(metrics: Metrics):
                 if cur_time - int(last_scale_up_time) < COOLDOWN:
                     in_cooldown = True
 
+            if not in_cooldown and app_red_zone is True:
+
+                scaling("UP", email, ami, server_type, server_expected,client_id,req_id)
 
             if cpu >= threshold + buffer_z:
                 real_state["high_cpu_count"] += 1
 
-
             else:
-                real_state["high_cpu_count"] = 0
+                cur_fluc = r_flactuation(fluc_file,client_id, req_id)
+
+                if cur_fluc > 2:
+                    real_state["high_cpu_count"] = 0
+
+                else:
+
+                    data = cur_fluc+1
+
+                    w_flactuation(fluc_file,data, client_id, req_id)
+
 
 
             if real_state["high_cpu_count"] >= 3 and not in_cooldown:
