@@ -117,6 +117,54 @@ def load_window(path):
             if line.strip()
         ]
 
+def if_down(cpu_file,rps_path,queue_path,req_id,client_id):
+
+    try:
+
+
+        if not (cpu_file.exists() and rps_path.exists() and queue_path.exists()):
+            return 0
+
+        with open(cpu_file,"r") as f:
+
+            data = json.load(f)
+
+            if data.get("high_cpu_count",1) != 0:
+                return 0
+
+
+        with open(rps_path,"r") as f:
+            values = [float(line.strip()) for line in f if line.strip()]
+            v0, v1, v2 = values
+
+            is_decreasing = (
+                    v1 <= v0 * 0.95 and
+                    v2 <= v1 * 0.95
+            )
+
+            if not is_decreasing:
+
+                return 0
+
+        with open(queue_path,"r") as f:
+            values = [float(line.strip()) for line in f if line.strip()]
+            v0, v1, v2 = values
+
+            is_decreasing_q = (
+                    v1 <= v0 * 0.95 and
+                    v2 <= v1 * 0.95
+            )
+
+            if not is_decreasing_q:
+                return 0
+
+        return 1
+
+    except Exception:
+
+        logging.exception("function if_down failed",
+                          extra={"req_id": req_id, "client_id": client_id})
+
 
 def write_window(path, new_value, size=3):
     values = []
@@ -182,6 +230,35 @@ def scaling(message,email,ami,server_type,server_expected,client_id,req_id):
 
         )
 
+def scaling_down(client_id,req_id,email,message):
+
+    try:
+
+        payload={
+            "client_id": client_id,
+            "req_id": req_id,
+            "email": email,
+            "message": message
+        }
+
+        url = os.getenv("DEC_URL")
+
+        r = requests.post(url, json=payload, timeout=1)
+        r.raise_for_status()
+
+
+    except Exception:
+
+        logging.exception("scaling down api caused issue",
+                          extra={"req_id":req_id,"client_id":client_id})
+
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f" deceng api not responding"
+
+        )
+
+
 def prediction(client_id,timestamp,cpu,cpu_idle,totalram,ramused,diskusage,networkin,networkout,live_connections,freeze_window,missing_server_count,req_id):
     try:
         payload = {
@@ -233,6 +310,7 @@ def prediction(client_id,timestamp,cpu,cpu_idle,totalram,ramused,diskusage,netwo
             detail=f" ml api not responding"
 
         )
+
 
 
 @broker1api.post("/ingest")
@@ -341,7 +419,7 @@ def broker1func(metrics: Metrics):
 
 
 
-        query = "select last_scale_up_time from system_info where client_id = %s"
+        query = "select last_scale_up_time,last_scale_down_time from system_info where client_id = %s"
 
         cursor.execute(query, (client_id,))
 
@@ -354,6 +432,7 @@ def broker1func(metrics: Metrics):
             raise HTTPException(status_code=404, detail="data not found")
 
         last_scale_up_time = db[0]
+        last_scale_down_time = db[1]
 
     except Exception:
 
@@ -399,11 +478,19 @@ def broker1func(metrics: Metrics):
                 app_red_zone = True
 
 
+            D_COOLDOWN = 240
             COOLDOWN = 300
             in_cooldown = False
+            in_d_cooldown = False
             if last_scale_up_time:
                 if cur_time - int(last_scale_up_time) < COOLDOWN:
                     in_cooldown = True
+
+            if last_scale_down_time:
+                if cur_time - int(last_scale_down_time) < D_COOLDOWN:
+                    in_d_cooldown = True
+
+            do_scale_down = if_down(window_file,rps_file,queue_file,req_id,client_id)
 
             if not in_cooldown and app_red_zone is True:
 
@@ -423,8 +510,6 @@ def broker1func(metrics: Metrics):
                     data = cur_fluc+1
 
                     w_flactuation(fluc_file,data, client_id, req_id)
-
-
 
             if real_state["high_cpu_count"] >= 3 and not in_cooldown:
                 scaling("UP", email, ami, server_type, server_expected,client_id,req_id)
@@ -589,7 +674,23 @@ def broker1func(metrics: Metrics):
                                  extra={"req_id":req_id,"client_id":client_id})
                     return {"status": "scaled_ml"}
 
+            if not in_d_cooldown and do_scale_down == 1:
 
+                scaling_down(client_id,req_id,email,"DOWN")
+
+                try:
+
+                    cursor.execute(
+                        "UPDATE system_info SET last_scale_down_time = %s WHERE client_id = %s",
+                        (cur_time, client_id)
+                    )
+                    con.commit()
+
+                except Exception:
+
+                    logging.exception("writing in db caused issue",
+                                      extra={"req_id": req_id, "client_id": client_id}
+                                      )
 
             save_json(window_file, real_state,client_id,req_id)
             save_json(ml_window_file, ml_state,client_id,req_id)

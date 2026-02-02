@@ -167,11 +167,65 @@ def process_instances(pending_file, joined_file,req_id, client_id,port=80):
                 f.write(instance_id + "\n")
 
 
-        except Exception as e:
+        except Exception:
             logging.exception(
                 "Issue raised during onboarding",
                 extra={"Instance": instance_id,"req_id":req_id,"client_id":client_id}
             )
+
+def removing_instance(id,client_id,req_id):
+
+    try:
+        targets = [{"Id": iid} for iid in id]
+
+        ec2.terminate_instances(
+            InstanceIds=targets
+        )
+        logging.info("instance disconnected to ALB are terminated sucessfully",
+                     extra={"Req_id": req_id, "client_id": client_id}
+                     )
+
+    except Exception:
+        logging.exception(
+            "Issue raised during terminating the instances",
+            extra={"req_id": req_id, "client_id": client_id}
+        )
+
+def unregistring(joined_file ,req_id,client_id):
+
+    try:
+
+        with open(joined_file, "r") as f:
+            instance_ids = [line.strip() for line in f if line.strip()]
+
+        total = len(instance_ids)
+        remove_count = max(1, total // 4)
+
+        ids_to_remove = instance_ids[:remove_count]
+        remaining_ids = instance_ids[remove_count:]
+
+        with open(joined_file, "w") as f:
+            if remaining_ids:
+                f.write("\n".join(remaining_ids) + "\n")
+
+        targets = [{"Id": iid} for iid in ids_to_remove]
+
+        elbv2.deregister_targets(
+            TargetGroupArn=os.getenv("ALB"),
+            Targets=targets
+        )
+        logging.info("instance disconnected to ALB",
+                     extra={"Req_id": req_id, "client_id": client_id}
+        )
+
+        terminating = removing_instance(ids_to_remove,client_id, req_id)
+
+    except Exception:
+
+        logging.exception(
+            "Issue raised during offboarding",
+            extra={"req_id": req_id, "client_id": client_id}
+        )
 
 
 
@@ -191,6 +245,8 @@ def decengfunc(metrics: Metrics,bg:BackgroundTasks):
         pending_file = f"{base_path}/pending.txt"
         joined_file = f"{base_path}/joined.txt"
 
+        scale = None
+
 
         logging.info(
             "DECENG request received",
@@ -203,38 +259,58 @@ def decengfunc(metrics: Metrics,bg:BackgroundTasks):
             }
         )
 
-        try:
+        if(message == "UP"):
+
+            try:
+
+                scale = "UP"
 
 
-            instance_id = start_instance(
-                ami,
-                total_instances,
-                server_type,
-                pending_file,
-                req_id,
-                client_id
-            )
+                instance_id = start_instance(
+                    ami,
+                    total_instances,
+                    server_type,
+                    pending_file,
+                    req_id,
+                    client_id
+                )
 
-            bg.add_task(process_instances, pending_file, joined_file,req_id,client_id)
+                bg.add_task(process_instances, pending_file, joined_file,req_id,client_id)
 
-        except Exception:
-            logging.exception(
-                "AWS caused issue"
-            )
+            except Exception:
+                logging.exception(
+                    "AWS caused issue during scaling",
+                    extra={"req_id": req_id, "client_id": client_id}
+                )
 
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="aws issue"
-            )
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="aws issue"
+                )
+
+        elif(message == "DOWN"):
+
+            scale = "DOWN"
+
+            try:
+
+                offboard = unregistring(joined_file, req_id, client_id)
+
+            except Exception:
+
+                logging.exception(
+                    "AWS caused issue during offboard",
+                    extra={"req_id": req_id, "client_id": client_id}
+                )
 
         try:
 
             payload = {
-                "email": email,
-                "client_id": client_id,
-                "total_instances": total_instances,
-                "scale": "UP",
-                "req_id": req_id
+                    "email": email,
+                    "client_id": client_id,
+                    "total_instances": total_instances,
+                    "scale": scale,
+                    "req_id": req_id
 
             }
 
@@ -244,11 +320,11 @@ def decengfunc(metrics: Metrics,bg:BackgroundTasks):
             r.raise_for_status()
 
             return {
-                "status": "requsted"
+                    "status": "requsted"
             }
 
         except Exception:
 
             logging.exception("Failed to notify alert service",
-                              extra={"client_id":client_id,"req_id":req_id}
-                              )
+                                  extra={"client_id":client_id,"req_id":req_id}
+                                  )
