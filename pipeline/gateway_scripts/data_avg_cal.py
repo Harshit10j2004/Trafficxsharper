@@ -228,8 +228,6 @@ payload = {
     "conn_rate": conn_rate,
     "queue_pressure": pressure,
     "rps_per_node": rps_per_node,
-    
-
 
     "server_expected": server_expected,
     "server_responded": server_responded,
