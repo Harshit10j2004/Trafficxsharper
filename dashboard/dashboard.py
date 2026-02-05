@@ -60,7 +60,7 @@ while True:
         outbound.append("all")
         break
 
-    outbound.append(ports)
+    outbound.append(int(ports))
 
 print("we want some additional info")
 time.sleep(5)

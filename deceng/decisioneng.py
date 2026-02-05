@@ -228,7 +228,6 @@ def unregistring(joined_file ,req_id,client_id):
         )
 
 
-
 @deceng.post("/deceng")
 def decengfunc(metrics: Metrics,bg:BackgroundTasks):
 
@@ -255,7 +254,8 @@ def decengfunc(metrics: Metrics,bg:BackgroundTasks):
                 "client_id": client_id,
                 "total_instances": total_instances,
                 "ami": ami,
-                "server_type": server_type
+                "server_type": server_type,
+                "message": message
             }
         )
 
