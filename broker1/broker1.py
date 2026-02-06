@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 from datetime import datetime , timezone
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+from pathlib import Path
 import os
 import logging
 import mysql.connector
@@ -22,7 +23,7 @@ class Metrics(BaseModel):
     disk_usage_percent: float
     network_in: float
     network_out: float
-    client_id : int
+    client_id : str
     freeze_window: int
     live_connections: int
     server_expected: int
@@ -86,7 +87,7 @@ def w_flactuation(path, data,client_id,req_id):
     try:
 
         with open(path,"w") as f:
-            f.write(data)
+            f.write(str(data))
 
     except Exception:
 
@@ -96,18 +97,22 @@ def w_flactuation(path, data,client_id,req_id):
 def r_flactuation(path,client_id,req_id):
     try:
 
-        with open(path, "r") as f:
-            curdata = f.read()
+        with open(path, "r",encoding="utf-8") as f:
+            curdata = f.read().strip()
+
+        if not curdata:
+             return 0
 
     except Exception:
 
         logging.exception("writing flacuation file caused issue",
                           extra={"req_id": req_id, "client_id": client_id})
 
-    return curdata
+    return int(curdata)
 
 def load_window(path):
-    if not path.exists():
+    p = Path(path)
+    if not p.exists():
         return []
 
     with open(path, "r") as f:
@@ -122,7 +127,7 @@ def if_down(cpu_file,rps_path,queue_path,req_id,client_id):
     try:
 
 
-        if not (cpu_file.exists() and rps_path.exists() and queue_path.exists()):
+        if not (Path(cpu_file).exists() and Path(rps_path).exists() and Path(queue_path).exists()):
             return 0
 
         with open(cpu_file,"r") as f:
@@ -169,7 +174,9 @@ def if_down(cpu_file,rps_path,queue_path,req_id,client_id):
 def write_window(path, new_value, size=3):
     values = []
 
-    if path.exists():
+    p = Path(path)
+
+    if p.exists():
         with open(path, "r") as f:
             values = [
                 line.strip()
@@ -230,7 +237,7 @@ def scaling(message,email,ami,server_type,server_expected,client_id,req_id):
 
         )
 
-def scaling_down(client_id,req_id,email,message):
+def scaling_down(client_id,req_id,email,message,ami,server_type,total_instance):
 
     try:
 
@@ -238,7 +245,11 @@ def scaling_down(client_id,req_id,email,message):
             "client_id": client_id,
             "req_id": req_id,
             "email": email,
-            "message": message
+            "message": message,
+            "total_instance": 0,
+            "ami": "NA",
+            "server_type": "NA"
+
         }
 
         url = os.getenv("DEC_URL")
@@ -417,8 +428,6 @@ def broker1func(metrics: Metrics):
         ami = db[5]
         server_type = db[6]
 
-
-
         query = "select last_scale_up_time,last_scale_down_time from system_info where client_id = %s"
 
         cursor.execute(query, (client_id,))
@@ -502,6 +511,8 @@ def broker1func(metrics: Metrics):
             else:
                 cur_fluc = r_flactuation(fluc_file,client_id, req_id)
 
+                cur_fluc = int(cur_fluc)
+
                 if cur_fluc > 2:
                     real_state["high_cpu_count"] = 0
 
@@ -518,8 +529,8 @@ def broker1func(metrics: Metrics):
                 real_state["high_cpu_count"] = 0
                 ml_state["predictions"] = []
 
-                save_json(window_file, real_state)
-                save_json(ml_window_file, ml_state)
+                save_json(window_file, real_state,client_id, req_id)
+                save_json(ml_window_file, ml_state,client_id, req_id)
 
                 try:
 
@@ -546,8 +557,8 @@ def broker1func(metrics: Metrics):
             if not in_gray_zone:
 
 
-                save_json(ml_window_file, ml_state)
-                url = os.getenv("ML_URL/insert")
+                save_json(ml_window_file, ml_state,client_id, req_id)
+                url = os.getenv("ML_URL_INSERT")
 
                 payload = {
                     "timestamp": timestamp,
@@ -561,7 +572,8 @@ def broker1func(metrics: Metrics):
                     "live_connections": live_connections,
                     "window_id": freeze_window,
                     "missing_server_count": missing_server_count,
-                    "client_id": client_id
+                    "client_id": client_id,
+                    "req_id": req_id
 
                 }
 
@@ -651,8 +663,8 @@ def broker1func(metrics: Metrics):
                     real_state["high_cpu_count"] = 0
                     ml_state["predictions"] = []
 
-                    save_json(window_file, real_state)
-                    save_json(ml_window_file, ml_state)
+                    save_json(window_file, real_state,client_id, req_id)
+                    save_json(ml_window_file, ml_state,client_id, req_id)
 
                     try:
 

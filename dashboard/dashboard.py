@@ -103,20 +103,25 @@ payload = {
     "outbound": list(outbound),
     "tools": list(tools)
 }
-# url = ""
-# response = requests.post(url,json=payload)
+url = ""
+response = requests.post(url,json=payload)
 
-# con = mysql.connector.connect(
-#     host=os.getenv("DB_HOST"),
-#     user=os.getenv("DB_USER"),
-#     password = os.getenv("PASSWORD"),
-#     database = os.getenv("DATABASE")
-# )
-#
-# cursor = con.cursor()
-#
-# values = (int(id),name,int(thresold),int(l_buf),int(h_buf),email)
-# query = "insert into client_info(clinet_id,client_name,thresold,l_buff,h_buff,email) values(%s,%s,%s,%s,%s,%s)"
-#
-# cursor.execute(query,values)
-# con.commit()
+data = response.json()
+
+security_group = data["security_group"]
+ami = data["ami"]
+
+con = mysql.connector.connect(
+    host=os.getenv("DB_HOST"),
+    user=os.getenv("DB_USER"),
+    password = os.getenv("PASSWORD"),
+    database = os.getenv("DATABASE")
+)
+
+cursor = con.cursor()
+
+values = (int(id),name,int(thresold),int(l_buf),int(h_buf),email,security_group,ami)
+query = "insert into client_info(clinet_id,client_name,thresold,l_buff,h_buff,email,security_group,ami) values(%s,%s,%s,%s,%s,%s,%s,%s,%s)"
+
+cursor.execute(query,values)
+con.commit()

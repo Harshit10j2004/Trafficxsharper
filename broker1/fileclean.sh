@@ -1,27 +1,29 @@
 #!/bin/bash
-
-set -x
+set -euo pipefail
 
 source /home/ubuntu/tsx/data/data.env
 
-file=$window_file
+BASE_DIR="$window_file"
+NOW=$(date +%s)
+MAX_AGE=600   # seconds
 
-timestamp_ms=$(date +%s%3N)
+for client_dir in "$BASE_DIR"/*; do
+    [[ -d "$client_dir" ]] || continue
 
-for i in "${file}"/*.log;do
+    for log_file in "$client_dir"/*.log; do
+        [[ -e "$log_file" ]] || continue
 
-  name=$(basename "$i")
-  epoch=${name%.log}
+        name=$(basename "$log_file")
+        epoch="${name%.log}"
 
+        # Only delete epoch-based logs
+        [[ "$epoch" =~ ^[0-9]+$ ]] || continue
 
-  [[ "$epoch" =~ ^[0-9]+$ ]] || continue
+        diff=$(( NOW - epoch ))
 
-  diff=$(( NOW - epoch ))
-
-  if (( diff > 600 )); then
-        rm -f "$i"
-
-        echo "OLD FILE: $i ($diff sec old)"
-
-  fi
+        if (( diff > MAX_AGE )); then
+            rm -f "$log_file"
+            echo "DELETED LOG: $log_file (${diff}s old)"
+        fi
+    done
 done

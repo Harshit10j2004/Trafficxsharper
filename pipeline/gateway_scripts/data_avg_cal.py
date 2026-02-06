@@ -213,7 +213,7 @@ if not v:
 payload = {
     "timestamp": now.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
     "freeze_window": int(now.timestamp()),
-    "client_id": CLIENT_ID,
+    "client_id": str(CLIENT_ID),
 
     "cpu_percantage": v[0],
     "cpu_idle_percent": v[1],
@@ -222,7 +222,7 @@ payload = {
     "disk_usage_percent": v[4],
     "network_in": v[5],
     "network_out": v[6],
-    "live_connections": v[7],
+    "live_connections": int(v[7]),
 
     "rps": rps,
     "conn_rate": conn_rate,
