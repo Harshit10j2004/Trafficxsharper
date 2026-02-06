@@ -41,7 +41,7 @@ class Metrics(BaseModel):
     total_instance: int
     ami: str
     server_type: str
-    client_id: int
+    client_id: str
     req_id: str
 
 ec2 = boto3.client("ec2", region_name="ap-south-1")

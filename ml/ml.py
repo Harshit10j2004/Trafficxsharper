@@ -46,7 +46,7 @@ class InsertMetrics(BaseModel):
     network_out: float
     live_connections: int
     window_id: int
-    client_id: int
+    client_id: str
     missing_server_count: int
     req_id: str
 
@@ -62,7 +62,7 @@ class CleanMetrics(BaseModel):
     network_out: float
     live_connections: int
     window_id: int
-    client_id: int
+    client_id: str
     missing_server_count: int
     req_id: str
 
