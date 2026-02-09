@@ -10,13 +10,36 @@ import boto3
 
 load_dotenv(r"/home/ubuntu/tsx/data/data.env")
 
+class SafeFormatter(logging.Formatter):
+    def format(self, record):
+        record.req_id    = getattr(record, 'req_id',    '')
+        record.client_id = getattr(record, 'client_id', '')
+        return super().format(record)
 
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(levelname)s - req_id=%(req_id)s client_id=%(client_id)s - %(message)s',
-    filename=os.getenv("LOG_FILE"),
-    filemode='a'
+root_logger = logging.getLogger()
+root_logger.setLevel(logging.DEBUG)
+
+for handler in root_logger.handlers[:]:
+    root_logger.removeHandler(handler)
+
+file_handler = logging.FileHandler(
+    os.getenv("LOG_FILE"),
+    mode='a',
+    encoding='utf-8'
 )
+file_handler.setLevel(logging.DEBUG)
+file_handler.setFormatter(SafeFormatter(
+    '%(asctime)s - %(levelname)s - req_id=%(req_id)s client_id=%(client_id)s - %(message)s'
+))
+
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.DEBUG)
+console_handler.setFormatter(SafeFormatter(
+    '[%(asctime)s] %(levelname)-5s req_id=%(req_id)s client=%(client_id)s %(message)s'
+))
+
+root_logger.addHandler(file_handler)
+root_logger.addHandler(console_handler)
 
 retry_strategy = Retry(
     total=5,
@@ -36,7 +59,7 @@ deceng = FastAPI()
 
 class Metrics(BaseModel):
 
-    message: str
+    scale_message: str
     email: str
     total_instance: int
     ami: str
@@ -44,15 +67,27 @@ class Metrics(BaseModel):
     client_id: str
     req_id: str
 
-ec2 = boto3.client("ec2", region_name="ap-south-1")
-elbv2 = boto3.client('elbv2', region_name="ap-south-1")
+ec2_client = None
+elbv2_client = None
+
+def get_ec2():
+    global ec2_client
+    if ec2_client is None:
+        ec2_client = boto3.client("ec2", region_name="ap-south-1")
+    return ec2_client
+
+def get_elbv2():
+    global elbv2_client
+    if elbv2_client is None:
+        elbv2_client = boto3.client("elbv2", region_name="ap-south-1")
+    return elbv2_client
 
 
 def start_instance(ami,total_instances,server_type,pending_file,req_id,client_id):
     try:
 
 
-        response = ec2.run_instances(
+        response = get_ec2().run_instances(
             ImageId=ami,
             MinCount=1,
             MaxCount=total_instances,
@@ -97,7 +132,7 @@ def health_check(instance_id,req_id,client_id):
 
     try:
 
-        waiter = ec2.get_waiter("instance_status_ok")
+        waiter = get_ec2().get_waiter("instance_status_ok")
         waiter.wait(
             InstanceIds=[instance_id],
             WaiterConfig={
@@ -117,7 +152,7 @@ def health_check(instance_id,req_id,client_id):
 def register_to_alb(instance_id, port,req_id,client_id):
     try:
 
-        elbv2.register_targets(
+        get_elbv2().register_targets(
             TargetGroupArn=os.getenv("ALB"),
             Targets=[{"Id": instance_id, "Port": port}]
         )
@@ -178,7 +213,7 @@ def removing_instance(id,client_id,req_id):
     try:
         targets = [{"Id": iid} for iid in id]
 
-        ec2.terminate_instances(
+        get_ec2().terminate_instances(
             InstanceIds=targets
         )
         logging.info("instance disconnected to ALB are terminated sucessfully",
@@ -210,7 +245,7 @@ def unregistring(joined_file ,req_id,client_id):
 
         targets = [{"Id": iid} for iid in ids_to_remove]
 
-        elbv2.deregister_targets(
+        get_elbv2().deregister_targets(
             TargetGroupArn=os.getenv("ALB"),
             Targets=targets
         )
@@ -232,7 +267,7 @@ def unregistring(joined_file ,req_id,client_id):
 def decengfunc(metrics: Metrics,bg:BackgroundTasks):
 
 
-        message = metrics.message
+        scale_message = metrics.scale_message
         email = metrics.email
         total_instances = metrics.total_instance
         ami = metrics.ami
@@ -255,11 +290,11 @@ def decengfunc(metrics: Metrics,bg:BackgroundTasks):
                 "total_instances": total_instances,
                 "ami": ami,
                 "server_type": server_type,
-                "message": message
+                "scale_action": scale_message
             }
         )
 
-        if(message == "UP"):
+        if(scale_message == "UP"):
 
             try:
 
@@ -288,7 +323,7 @@ def decengfunc(metrics: Metrics,bg:BackgroundTasks):
                     detail="aws issue"
                 )
 
-        elif(message == "DOWN"):
+        elif(scale_message == "DOWN"):
 
             scale = "DOWN"
 
@@ -310,7 +345,8 @@ def decengfunc(metrics: Metrics,bg:BackgroundTasks):
                     "client_id": client_id,
                     "total_instances": total_instances,
                     "scale": scale,
-                    "req_id": req_id
+                    "req_id": req_id,
+                    "message": scale_message
 
             }
 

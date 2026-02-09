@@ -28,6 +28,7 @@ class AlertData(BaseModel):
     scale: str
     client_id: int
     req_id:str
+    message: str
 
 emailapp = FastAPI()
 

@@ -211,7 +211,7 @@ def scaling(message,email,ami,server_type,server_expected,client_id,req_id):
             total_instance = int(server_expected / 10)
 
         payload = {
-            "message": message,
+            "scale_message": message,
             "email": email,
             "ami": ami,
             "server_type": server_type,
@@ -245,7 +245,7 @@ def scaling_down(client_id,req_id,email,message,ami,server_type,total_instance):
             "client_id": client_id,
             "req_id": req_id,
             "email": email,
-            "message": message,
+            "scale_message": message,
             "total_instance": 0,
             "ami": "NA",
             "server_type": "NA"
