@@ -356,6 +356,7 @@ def broker1func(metrics: Metrics):
         }
     )
 
+    print(f"REQUEST ARRIVED {client_id} and generated requested id is {req_id}")
 
 
     try:
@@ -706,6 +707,7 @@ def broker1func(metrics: Metrics):
 
             save_json(window_file, real_state,client_id,req_id)
             save_json(ml_window_file, ml_state,client_id,req_id)
+
 
 
     except Exception as e:
