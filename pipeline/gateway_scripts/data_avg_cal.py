@@ -234,6 +234,8 @@ payload = {
     "missing_server": list(missing_servers)
 }
 
+print(payload)
+
 try:
     r = session.post(URL, json=payload, timeout=3)
     print(f"[SENT] status={r.status_code}")

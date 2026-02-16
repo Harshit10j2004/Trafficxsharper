@@ -1,17 +1,16 @@
-from fastapi import FastAPI,HTTPException,status
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from dotenv import load_dotenv
 from pathlib import Path
-from sklearn.linear_model import LinearRegression
-import numpy as np
+import pandas as pd
+import joblib
 import requests
 import os
 import logging
 
 load_dotenv(r"/home/ubuntu/tsx/data/data.env")
-
 
 logging.basicConfig(
     level=logging.INFO,
@@ -34,7 +33,6 @@ session.mount("http://", adapter)
 session.mount("https://", adapter)
 
 
-
 class InsertMetrics(BaseModel):
     timestamp: str
     cpu: float
@@ -49,6 +47,9 @@ class InsertMetrics(BaseModel):
     client_id: str
     missing_server_count: int
     req_id: str
+    conn_rate: float
+    queue_pressure: float
+    rps: float
 
 
 class CleanMetrics(BaseModel):
@@ -65,110 +66,24 @@ class CleanMetrics(BaseModel):
     client_id: str
     missing_server_count: int
     req_id: str
-
-
-def count_rows(file_path,client_id,req_id):
-    if not file_path.exists():
-        return 0
-
-    try:
-
-        with open(file_path, "r") as f:
-            return sum(1 for line in f if line.strip())
-
-    except Exception:
-
-        logging.exception("counting rows caused issue",
-                          extra={"client_id":client_id, "req_id": req_id}
-                          )
-        return 0
-
-
-def appendin(new_row,FILE_PATH,client_id,req_id):
-
-
-    rows = []
-    MAX_ROWS = 10
-
-    try:
-
-
-        if FILE_PATH.exists():
-            with open(FILE_PATH, "r") as f:
-                rows = [line.strip() for line in f if line.strip()]
-
-        rows.append(",".join(map(str, new_row)))
-
-
-        rows = rows[-MAX_ROWS:]
-
-
-        with open(FILE_PATH, "w") as f:
-            f.write("\n".join(rows) + "\n")
-
-        logging.info(
-            "ml_dataset_row_appended",
-            extra={"client_id": client_id, "req_id": req_id}
-        )
-
-
-    except Exception:
-
-        logging.exception("Error caused during reading and writing the file at dataset",
-                          extra={"client_id": client_id, "req_id": req_id}
-                          )
-        raise
-
-def load_metrics_by_column(FILE_PATH,EXPECTED_COLS,client_id,req_id):
-    if not FILE_PATH.exists():
-        raise FileNotFoundError("metrics file not found")
-
-    try:
-
-        columns = [[] for _ in range(EXPECTED_COLS)]
-
-        with open(FILE_PATH, "r") as f:
-            for line_no, line in enumerate(f, start=1):
-                line = line.strip()
-                if not line:
-                    continue
-
-                parts = line.split(",")
-
-                if len(parts) != EXPECTED_COLS:
-                    raise ValueError(
-                        f"Line {line_no}: expected {EXPECTED_COLS} columns, got {len(parts)}"
-                    )
-
-                for i, value in enumerate(parts):
-                    columns[i].append(float(value))
-    except Exception:
-
-        logging.exception("Error caused during loading the metrics into the columns",
-                          extra={"client_id": client_id, "req_id": req_id}
-                          )
-        raise
-
-    return columns
+    conn_rate: float
+    queue_pressure: float
+    rps: float
 
 
 mlapi = FastAPI()
 
+
 @mlapi.post("/clean")
 async def mlfunc(metrics: CleanMetrics):
-
     cpu = metrics.cpu
-    cpu_idle = metrics.cpu_idle
-    totalram = metrics.total_ram
-    ramused = metrics.ram_used
-    diskusage = metrics.disk_usage
-    networkin = metrics.network_in
-    networkout = metrics.network_out
     timestamp = metrics.timestamp
     window_id = metrics.window_id
     live_connections = metrics.live_connections
     client_id = metrics.client_id
     req_id = metrics.req_id
+    queue_pressure = metrics.queue_pressure
+    rps = metrics.rps
 
     logging.info(
         "ml_api_pred request received",
@@ -178,97 +93,106 @@ async def mlfunc(metrics: CleanMetrics):
         }
     )
 
-    base_file = os.getenv("FILE")
-
-    client_file = Path(f"{base_file}/{client_id}/file.csv")
-
-    row = [cpu, cpu_idle, totalram, ramused, diskusage, networkin, networkout, live_connections]
+    print(f"REQUEST ARRIVED {client_id} and generated requested id is {req_id}")
 
     try:
 
-        columns = load_metrics_by_column(client_file, EXPECTED_COLS=8,client_id=client_id,req_id=req_id)
+        base_file = os.getenv("FILE")
 
+        client_file = Path(f"{base_file}/{client_id}/file.csv")
 
-        cpu_l = np.array(columns[0])
-        cpu_idle_l = np.array(columns[1])
-        totalram_l = np.array(columns[2])
-        ramused_l = np.array(columns[3])
-        diskusage_l = np.array(columns[4])
-        networkin_l = np.array(columns[5])
-        networkout_l = np.array(columns[6])
-        live_connections_l = np.array(columns[7])
+        df = pd.read_csv(client_file)
 
-        X = np.column_stack((cpu_idle_l,totalram_l,ramused_l,diskusage_l,networkin_l,networkout_l,live_connections_l))
-
-        y = cpu_l
-
-        model = LinearRegression()
-        model.fit(X, y)
-
-        n_row = [cpu_idle, totalram, ramused, diskusage, networkin, networkout, live_connections]
-
-        next_window = np.array([n_row])
-        next_cpu = model.predict(next_window)[0]
-
-        ret_value = next_cpu
-
-
+        ml = Path(f"{base_file}/{client_id}/model.pkl")
+        model = joblib.load(ml)
 
     except Exception:
 
-        ret_value = window_id
-
-        logging.exception("Error caused during data prediction",
-                          extra={"client_id": client_id,"req_id": req_id}
-                          )
-
-    MAX_ROWS = 10
-
-    try:
-        row_count = count_rows(client_file,client_id,req_id)
-
-        if row_count >= MAX_ROWS:
-
-            write_file = appendin(row, client_file,client_id, req_id)
-
-        else:
-
-            with open(client_file, "a") as f:
-                f.write(",".join(map(str, row)) + "\n")
-
-    except Exception:
-
-        logging.exception("ml_dataset_write_failed",
+        logging.exception("Error caused during loading the model/files",
                           extra={"client_id": client_id, "req_id": req_id}
                           )
+
         raise HTTPException(
             status_code=500,
-            detail="ml_dataset_write_failed"
+            detail="ml_data_load_failed"
         )
 
-    logging.info(
-        "ml_request_completed",
-        extra={"client_id": client_id, "req_id": req_id}
-    )
+    try:
 
-    return ret_value
+        latest = {}
+
+        latest["cpu_percentage"] = cpu
+        latest["rps"] = rps
+        latest["live_connections"] = live_connections
+        latest["queue_pressure"] = queue_pressure
+        if len(df) < 5:
+            raise ValueError("Need at least 5 historical windows for lag features")
+
+        for lag in [1, 2, 3, 4, 5]:
+            latest[f"cpu_lag{lag}"] = df.iloc[-lag]["cpu_percentage"]
+            latest[f"rps_lag{lag}"] = df.iloc[-lag]["rps"]
+            latest[f"live_connection_lag{lag}"] = df.iloc[-lag]["live_connections"]
+
+        window_df = df.tail(5)
+
+        latest["cpu_roll_mean"] = window_df["cpu_percentage"].mean()
+        latest["cpu_roll_std"] = window_df["cpu_percentage"].std()
+        latest["rps_roll_mean"] = window_df["rps"].mean()
+
+        X_now = pd.DataFrame([latest])
+
+    except Exception:
+
+        logging.exception("Error caused during setting up the data for prediction",
+                          extra={"client_id": client_id, "req_id": req_id}
+                          )
+
+        raise HTTPException(
+            status_code=500,
+            detail="ml_dataset_load_failed"
+        )
+
+    try:
+
+        prediction = model.predict(X_now)[0]
+
+    except Exception:
+
+        logging.exception("Error caused during prediction",
+                          extra={"client_id": client_id, "req_id": req_id}
+                          )
+
+        raise HTTPException(
+            status_code=500,
+            detail="prediction failed"
+        )
+
+    try:
+
+        rows = [cpu, rps, queue_pressure, live_connections]
+
+        with open(client_file, "a") as f:
+            f.write(",".join(map(str, rows)) + "\n")
+
+    except Exception:
+
+        logging.exception("Error caused during data writing",
+                          extra={"client_id": client_id, "req_id": req_id}
+                          )
+
+    return prediction
 
 
 @mlapi.post("/insert")
 async def inserting(metrics: InsertMetrics):
-
     cpu = metrics.cpu
-    cpu_idle = metrics.cpu_idle
-    totalram = metrics.total_ram
-    ramused = metrics.ram_used
-    diskusage = metrics.disk_usage
-    networkin = metrics.network_in
-    networkout = metrics.network_out
     timestamp = metrics.timestamp
     window_id = metrics.window_id
     live_connections = metrics.live_connections
     client_id = metrics.client_id
     req_id = metrics.req_id
+    queue_pressure = metrics.queue_pressure
+    rps = metrics.rps
 
     logging.info(
         "ml_api_insert request received",
@@ -278,38 +202,26 @@ async def inserting(metrics: InsertMetrics):
         }
     )
 
-    MAX_ROWS = 10
+    print(f"REQUEST ARRIVED {client_id} and generated requested id is {req_id}")
 
-    row = [cpu,cpu_idle,totalram,ramused,diskusage,networkin,networkout,live_connections]
+    rows = [cpu, rps, queue_pressure, live_connections]
 
     base_file = os.getenv("FILE")
 
     client_file = Path(f"{base_file}/{client_id}/file.csv")
 
-    row_count = count_rows(client_file,client_id,req_id)
+    try:
 
-    if row_count >= MAX_ROWS:
+        rows = [cpu, rps, queue_pressure, live_connections]
 
-        write_file = appendin(row,client_file,client_id, req_id)
+        with open(client_file, "a") as f:
+            f.write(",".join(map(str, rows)) + "\n")
 
-    else:
+    except Exception:
 
-        try:
+        logging.exception("Error caused during data writing",
+                          extra={"client_id": client_id, "req_id": req_id}
+                          )
 
-            with open(client_file,"a") as f:
-                f.write(",".join(map(str, row)) + "\n")
+        raise
 
-        except Exception:
-
-            logging.exception("Error caused during writing the file at ml_insert",
-                              extra={"client_id": client_id, "req_id": req_id}
-                              )
-            raise HTTPException(
-                status_code=500,
-                detail="ml_dataset_write_failed"
-            )
-
-    logging.info(
-        "ml_request_completed",
-        extra={"client_id": client_id, "req_id": req_id}
-    )

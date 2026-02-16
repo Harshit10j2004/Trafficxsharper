@@ -54,18 +54,22 @@ def filter_instances(instances, cpu_min, cpu_max, ram_min, ram_max, network, wor
     return candidates
 
 def build_user_data(tools: list[str]):
-    script = [
-        "#!/bin/bash",
-        "set -e",
-        "apt-get update -y"
-    ]
+    try:
+        script = [
+            "#!/bin/bash",
+            "set -e",
+            "apt-get update -y"
+        ]
 
-    if tools:
-        joined_tools = " ".join(tools)
-        script.append(f"apt-get install -y {joined_tools}")
+        if tools:
+            joined_tools = " ".join(tools)
+            script.append(f"apt-get install -y {joined_tools}")
 
 
-    return "\n".join(script)
+        return "\n".join(script)
+    except Exception as e:
+        print(e)
+        print("from script")
 
 
 def create_sg(inbound,outbound):
@@ -73,7 +77,7 @@ def create_sg(inbound,outbound):
     response = ec2.create_security_group(
         GroupName="tsx-client-1-sg",
         Description="TSX managed security group for client 1",
-        VpcId="vpc-0abc1234def56789"
+        VpcId="vpc-090749b4fff3f9d4e"
     )
 
     sg_id = response["GroupId"]
@@ -131,7 +135,7 @@ def create_sg(inbound,outbound):
     return sg_id
 
 
-def start_instance(server_type,sg_id,tools):
+def start_instance(server_type,security_group,tools):
 
     try:
 
@@ -139,12 +143,14 @@ def start_instance(server_type,sg_id,tools):
 
 
         response = ec2.run_instances(
+            ImageId="ami-07d0c4554fe3e78ec",
+            MinCount=1,
             MaxCount=1,
             InstanceType=server_type,
-            KeyName="key",
-            SecurityGroupIds=sg_id,
-            SubnetId="subnet_id",
-            Userdata = userdata,
+            KeyName="new_key",
+            SecurityGroupIds=[security_group],
+            SubnetId="subnet-064758303e390dd6b",
+            UserData = userdata,
             TagSpecifications=[
                 {
                     "ResourceType": "instance",
@@ -156,12 +162,14 @@ def start_instance(server_type,sg_id,tools):
             ]
         )
 
-        return response
+        instance_id = response["Instances"][0]["InstanceId"]
+        return instance_id
 
 
-    except Exception:
+    except Exception as e:
 
-        print("ok")
+        print(e)
+        raise
 
 def image_creation(instance_id):
 
@@ -190,20 +198,20 @@ def main(data:Information):
     cpu_min, cpu_max = parse_range(cpu)
     ram_min, ram_max = parse_range(ram)
 
-    instances = load_catalog()
+    # instances = load_catalog()
+    #
+    # matches = filter_instances(
+    #     instances,
+    #     cpu_min, cpu_max,
+    #     ram_min, ram_max,
+    #     network,
+    #     workload
+    # )
+    #
+    # if not matches:
+    #     return ("issues with config best")
 
-    matches = filter_instances(
-        instances,
-        cpu_min, cpu_max,
-        ram_min, ram_max,
-        network,
-        workload
-    )
-
-    if not matches:
-        return ("issues with config best")
-
-    best = matches[0]
+    best = "t3.micro"
 
     security_group = create_sg(inbound,outbound)
 
@@ -211,7 +219,10 @@ def main(data:Information):
 
     ami = image_creation(instances)
 
-    return security_group,ami
+    return {
+        "security_group": security_group,
+        "ami": ami
+    }
 
     
 

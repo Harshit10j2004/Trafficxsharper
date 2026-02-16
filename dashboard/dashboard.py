@@ -5,7 +5,7 @@ import random
 import os
 import requests
 
-load_dotenv("")
+load_dotenv("/home/ubuntu/tsx/data/data.env")
 
 print("Welcome to trafficsharperX fill out details:")
 time.sleep(5)
@@ -22,7 +22,7 @@ h_buf = int(input("Enter higher buffer: "))
 print("Now we need the technical info for finding best server and make best security group:")
 time.sleep(5)
 
-work_load = input("Enter you server used for (webapp/api_backend/ml_trainning/ai_trainng/): ")
+workload = input("Enter you server used for (webapp/api_backend/ml_trainning/ai_trainng/): ")
 
 print("now we need hardware details:")
 
@@ -50,14 +50,14 @@ while True:
 
 while True:
 
-    ports = (input("Enter the outbound ports you want to open (if done than write done)/(if all write all): "))
+    ports = (input("Enter the outbound ports you want to open (if done than write done)/(if all write 0): "))
 
     if ports == "done":
         break
 
-    if ports == "all":
+    if ports == 0:
 
-        outbound.append("all")
+        outbound.append(int(0))
         break
 
     outbound.append(int(ports))
@@ -71,14 +71,14 @@ cooldown = int(input("Enter the cooldown period on seconds: "))
 id = random.randint(0,10000)
 print(f"your id is {id} remember this")
 
-print(name,thresold,l_buf,h_buf,work_load,cpu,ram,storage,network,scale_mode,cooldown)
+print(name,thresold,l_buf,h_buf,workload,cpu,ram,storage,network,scale_mode,cooldown)
 
 for i in range(len(inbound)):
     print(inbound[i])
 for i in range(len(outbound)):
     print(outbound[i])
 
-print("Need some extra tools mention/ If no than put NO:")
+print("Need some extra tools mention/ If no than put NO/If done write DONE:")
 time.sleep(5)
 
 tools = []
@@ -91,10 +91,14 @@ while True:
 
         break
 
+    if tool == "DONE":
+
+        break
+
     tools.append(tool)
 
 payload = {
-    "workload": work_load,
+    "workload": workload,
     "cpu": cpu,
     "ram": ram,
     "storage": storage,
@@ -103,7 +107,7 @@ payload = {
     "outbound": list(outbound),
     "tools": list(tools)
 }
-url = ""
+url = "http://15.206.89.199:8000/creation"
 response = requests.post(url,json=payload)
 
 data = response.json()

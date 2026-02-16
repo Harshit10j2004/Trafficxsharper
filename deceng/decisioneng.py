@@ -216,6 +216,7 @@ def removing_instance(id,client_id,req_id):
         get_ec2().terminate_instances(
             InstanceIds=targets
         )
+
         logging.info("instance disconnected to ALB are terminated sucessfully",
                      extra={"Req_id": req_id, "client_id": client_id}
                      )
@@ -254,6 +255,7 @@ def unregistring(joined_file ,req_id,client_id):
         )
 
         terminating = removing_instance(ids_to_remove,client_id, req_id)
+        print("Scale down sucessfull")
 
     except Exception:
 
@@ -294,6 +296,8 @@ def decengfunc(metrics: Metrics,bg:BackgroundTasks):
             }
         )
 
+        print(f"REQUEST ARRIVED {client_id} and generated requested id is {req_id} for server {scale_message}")
+
         if(scale_message == "UP"):
 
             try:
@@ -309,6 +313,8 @@ def decengfunc(metrics: Metrics,bg:BackgroundTasks):
                     req_id,
                     client_id
                 )
+
+                print(f"instance started {instance_id}")
 
                 bg.add_task(process_instances, pending_file, joined_file,req_id,client_id)
 
