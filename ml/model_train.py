@@ -28,7 +28,6 @@ try:
     for lag in [1,2,3,4,5]:
 
         df[f'cpu_lag{lag}']   = df['cpu_percentage'].shift(lag)
-        df[f'rps_lag{lag}']   = df['rps'].shift(lag)
         df[f'live_connection_lag{lag}']  = df['live_connections'].shift(lag)
 
     window = 5
@@ -36,9 +35,26 @@ try:
     df['cpu_roll_std']  = df['cpu_percentage'].rolling(window).std()
     df['rps_roll_mean'] = df['rps'].rolling(window).mean()
 
+    df["cpu_delta_1"] = df["cpu_percentage"] - df["cpu_lag1"]
+    df["rps_delta_1"] = df["rps"] - df["rps_lag1"]
+    df["live_connection_delta_1"] = df["live_connections"] - df["live_connection_lag1"]
+
     df = df.dropna().reset_index(drop=True)
 
-    features = [col for col in df.columns if col.startswith(('cpu_', 'rps_', 'conn_', 'queue_pressure', 'live_connections', 'roll'))]
+    features = [
+
+        'cpu_percentage',
+        'cpu_idle_percent',
+        'live_connections',
+        'cpu_lag1', 'cpu_lag2', 'cpu_lag3', 'cpu_lag4', 'cpu_lag5',
+        'live_connection_lag1', 'live_connection_lag2',
+        'live_connection_lag3', 'live_connection_lag4',
+        'live_connection_lag5',
+        'cpu_roll_mean', 'cpu_roll_std', 'rps_roll_mean',
+        'cpu_delta_1', 'rps_delta_1', 'live_connection_delta_1'
+    ]
+
+
 
 except Exception:
 
@@ -85,5 +101,12 @@ except Exception:
 
     logging.exception("Error caused during the training the data")
 
+try:
 
-joblib.dump(model,"model.pkl")
+    model_file = Path(f"{base_file}/{client_id}/model.pkl")
+
+    joblib.dump(model,model_file)
+
+except Exception:
+
+    logging.exception("Error caused during the saving the model")
