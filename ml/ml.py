@@ -37,38 +37,22 @@ class InsertMetrics(BaseModel):
     timestamp: str
     cpu: float
     cpu_idle: float
-    total_ram: float
-    ram_used: float
-    disk_usage: float
-    network_in: float
-    network_out: float
     live_connections: int
     window_id: int
     client_id: str
-    missing_server_count: int
     req_id: str
-    conn_rate: float
     queue_pressure: float
-    rps: float
 
 
 class CleanMetrics(BaseModel):
     timestamp: str
     cpu: float
     cpu_idle: float
-    total_ram: float
-    ram_used: float
-    disk_usage: float
-    network_in: float
-    network_out: float
     live_connections: int
     window_id: int
     client_id: str
-    missing_server_count: int
     req_id: str
-    conn_rate: float
     queue_pressure: float
-    rps: float
 
 
 mlapi = FastAPI()
@@ -84,6 +68,7 @@ async def mlfunc(metrics: CleanMetrics):
     req_id = metrics.req_id
     queue_pressure = metrics.queue_pressure
     rps = metrics.rps
+    cpu_idle = metrics.cpu_idle
 
     logging.info(
         "ml_api_pred request received",
@@ -122,15 +107,13 @@ async def mlfunc(metrics: CleanMetrics):
         latest = {}
 
         latest["cpu_percentage"] = cpu
-        latest["rps"] = rps
         latest["live_connections"] = live_connections
-        latest["queue_pressure"] = queue_pressure
+        latest["cpu_idle_percent"] = cpu_idle
         if len(df) < 5:
             raise ValueError("Need at least 5 historical windows for lag features")
 
         for lag in [1, 2, 3, 4, 5]:
             latest[f"cpu_lag{lag}"] = df.iloc[-lag]["cpu_percentage"]
-            latest[f"rps_lag{lag}"] = df.iloc[-lag]["rps"]
             latest[f"live_connection_lag{lag}"] = df.iloc[-lag]["live_connections"]
 
         window_df = df.tail(5)
@@ -191,8 +174,8 @@ async def inserting(metrics: InsertMetrics):
     live_connections = metrics.live_connections
     client_id = metrics.client_id
     req_id = metrics.req_id
-    queue_pressure = metrics.queue_pressure
-    rps = metrics.rps
+    cpu_idle = metrics.cpu_idle
+
 
     logging.info(
         "ml_api_insert request received",
@@ -204,7 +187,6 @@ async def inserting(metrics: InsertMetrics):
 
     print(f"REQUEST ARRIVED {client_id} and generated requested id is {req_id}")
 
-    rows = [cpu, rps, queue_pressure, live_connections]
 
     base_file = os.getenv("FILE")
 
@@ -212,7 +194,7 @@ async def inserting(metrics: InsertMetrics):
 
     try:
 
-        rows = [cpu, rps, queue_pressure, live_connections]
+        rows = [cpu,cpu_idle, live_connections]
 
         with open(client_file, "a") as f:
             f.write(",".join(map(str, rows)) + "\n")
