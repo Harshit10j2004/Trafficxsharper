@@ -33,10 +33,9 @@ try:
     window = 5
     df['cpu_roll_mean'] = df['cpu_percentage'].rolling(window).mean()
     df['cpu_roll_std']  = df['cpu_percentage'].rolling(window).std()
-    df['rps_roll_mean'] = df['rps'].rolling(window).mean()
 
     df["cpu_delta_1"] = df["cpu_percentage"] - df["cpu_lag1"]
-    df["rps_delta_1"] = df["rps"] - df["rps_lag1"]
+
     df["live_connection_delta_1"] = df["live_connections"] - df["live_connection_lag1"]
 
     df = df.dropna().reset_index(drop=True)
@@ -50,8 +49,8 @@ try:
         'live_connection_lag1', 'live_connection_lag2',
         'live_connection_lag3', 'live_connection_lag4',
         'live_connection_lag5',
-        'cpu_roll_mean', 'cpu_roll_std', 'rps_roll_mean',
-        'cpu_delta_1', 'rps_delta_1', 'live_connection_delta_1'
+        'cpu_roll_mean', 'cpu_roll_std',
+        'cpu_delta_1', 'live_connection_delta_1'
     ]
 
 
