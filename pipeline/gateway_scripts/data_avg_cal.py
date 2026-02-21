@@ -215,7 +215,7 @@ payload = {
     "freeze_window": int(now.timestamp()),
     "client_id": str(CLIENT_ID),
 
-    "cpu_percantage": v[0],
+    "cpu_percentage": v[0],
     "cpu_idle_percent": v[1],
     "total_ram": v[2],
     "ram_used": v[3],
