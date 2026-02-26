@@ -168,7 +168,7 @@ def scaling(message, email, ami, server_type, server_expected, client_id, req_id
         )
 
 
-def scaling_down(client_id, req_id, email, message, ami, server_type, total_instance):
+def scaling_down(client_id, req_id, email, message):
     try:
 
         payload = {
@@ -367,7 +367,7 @@ def broker1func(metrics: Metrics, conn=Depends(get_connection)):
 
     try:
 
-        total_cur_window = None
+        total_cpu_window = None
         total_cur_fluc = None
         total_cur_ml_window = None
         total_cur_queue = None
@@ -390,7 +390,7 @@ def broker1func(metrics: Metrics, conn=Depends(get_connection)):
             sqll_cursor.execute(sqll_query10,values)
             sqll_conn.commit()
 
-            total_cur_window = 0
+            total_cpu_window = 0
             total_cur_fluc = 0
             total_cur_ml_window = 0
             total_cur_queue = 0
@@ -402,7 +402,7 @@ def broker1func(metrics: Metrics, conn=Depends(get_connection)):
 
         else:
 
-            total_cur_window = local_data[0]
+            total_cpu_window = local_data[0]
             total_cur_fluc = local_data[1]
             total_cur_ml_window = local_data[2]
             total_cur_queue = local_data[3]
@@ -456,7 +456,7 @@ def broker1func(metrics: Metrics, conn=Depends(get_connection)):
             if cur_time - int(last_scale_down_time) < D_COOLDOWN:
                 in_d_cooldown = True
 
-        do_scale_down = if_down(total_cur_window, total_cur_queue, total_cur_rps, req_id, client_id)
+        do_scale_down = if_down(total_cpu_window, total_cur_queue, total_cur_rps, req_id, client_id)
 
         if not in_cooldown and app_red_zone is True:
             scaling("UP", email, ami, server_type, server_expected, client_id, req_id)
@@ -469,9 +469,9 @@ def broker1func(metrics: Metrics, conn=Depends(get_connection)):
 
         if cpu >= threshold + buffer_z:
 
-            new_total_cpu = total_cur_window + 1
+            new_total_cpu = total_cpu_window + 1
 
-            sql_query2 = f"update local_state set total_cur_window = ? where client_id = ?"
+            sql_query2 = f"update local_state set total_cpu_window = ? where client_id = ?"
             sqll_cursor.execute(sql_query2, (new_total_cpu,client_id,))
 
             sqll_conn.commit()
@@ -482,7 +482,7 @@ def broker1func(metrics: Metrics, conn=Depends(get_connection)):
 
             if cur_fluc > 2:
 
-                sql_query3 = f"update local_state set total_cur_window = ? where client_id = ?"
+                sql_query3 = f"update local_state set total_cpu_window = ? where client_id = ?"
                 sqll_cursor.execute(sql_query3, (0, client_id,))
 
                 sqll_conn.commit()
@@ -497,12 +497,12 @@ def broker1func(metrics: Metrics, conn=Depends(get_connection)):
 
                 sqll_conn.commit()
 
-        if total_cur_window >= 3 and not in_cooldown:
+        if total_cpu_window >= 3 and not in_cooldown:
             scaling("UP", email, ami, server_type, server_expected, client_id, req_id)
 
 
 
-            sql_query6 = f"update local_state set total_cur_window = ?, total_cur_ml_window = ? where client_id = ?"
+            sql_query6 = f"update local_state set total_cpu_window = ?, total_cur_ml_window = ? where client_id = ?"
             sqll_cursor.execute(sql_query6, (0, 0, client_id))
 
             sqll_conn.commit()
@@ -612,7 +612,7 @@ def broker1func(metrics: Metrics, conn=Depends(get_connection)):
             ):
                 scaling("ML", email, ami, server_type, server_expected, client_id, req_id)
 
-                sql_query9 = "update local_state set total_cur_window = ?, total_cur_ml_window = ? where client_id = ?"
+                sql_query9 = "update local_state set total_cpu_window = ?, total_cur_ml_window = ? where client_id = ?"
                 sqll_cursor.execute(sql_query9, (0, 0, client_id))
 
                 sqll_conn.commit()
