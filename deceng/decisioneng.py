@@ -7,6 +7,7 @@ import os
 import logging
 import requests
 import boto3
+import uuid
 
 load_dotenv(r"/home/ubuntu/tsx/data/data.env")
 
@@ -69,6 +70,13 @@ class Metrics(BaseModel):
     req_id: str
     joining_token: str
 
+class Scale_down(BaseModel):
+
+    scale_message: str
+    client_id: int
+    instance_id: str
+    node_id: str
+    email: str
 
 ec2_client = None
 
@@ -169,30 +177,34 @@ def health_check(instance_id, req_id, client_id):
         raise
 
 
-def pop_next_instance(pending_file, req_id, client_id):
+def pop_next_instance(pending_file, req_id, client_id,instance_id):
+
     if not os.path.exists(pending_file):
-        return None
+        logging.info(f"Pending file not found: {pending_file}",
+                     extra={"Req_id": req_id, "client_id": client_id})
+        return False
+
 
     with open(pending_file, "r") as f:
-        lines = [l.strip() for l in f if l.strip()]
+        all_ids = [line.strip() for line in f if line.strip()]
 
-    if not lines:
-        return None
 
-    iid = lines[0]
+    original_count = len(all_ids)
+    updated_ids = [iid for iid in all_ids if iid != instance_id]
 
-    remove = removing_instance(iid,client_id, req_id)
+    if len(updated_ids) == original_count:
+        logging.info(f"Instance ID not found in file: {instance_id}",
+                     extra={"Req_id": req_id, "client_id": client_id})
+        return False
 
-    with open(pending_file, "w") as f:
-        for l in lines[1:]:
-            f.write(l + "\n")
-    logging.info(
-        "Popped instance from pending queue",
-        extra={"instance_id": iid, "remaining": len(lines), "req_id": req_id, "client_id": client_id}
-    )
+    if updated_ids:
+        with open(pending_file, "w") as f:
+            for iid in updated_ids:
+                f.write(iid + "\n")
+        logging.info(f"Removed {instance_id} — {len(updated_ids)} remaining",
+                     extra={"Req_id": req_id, "client_id": client_id})
 
-    return iid
-
+    return True
 
 def removing_instance(id, client_id, req_id):
     try:
@@ -202,8 +214,8 @@ def removing_instance(id, client_id, req_id):
             InstanceIds=targets
         )
 
-        logging.info("instance disconnected to ALB are terminated sucessfully",
-                     extra={"Req_id": req_id, "client_id": client_id}
+        logging.info("instance is terminated sucessfully",
+                     extra={"Req_id": req_id, "client_id": client_id, "instance_id": id}
                      )
 
     except Exception:
@@ -211,6 +223,34 @@ def removing_instance(id, client_id, req_id):
             "Issue raised during terminating the instances",
             extra={"req_id": req_id, "client_id": client_id}
         )
+
+def mail(email,client_id,scale,req_id,scale_message,total_instances):
+    try:
+        payload = {
+            "email": email,
+            "client_id": client_id,
+            "total_instances": total_instances,
+            "scale": scale,
+            "req_id": req_id,
+            "message": scale_message
+
+        }
+
+        url = os.getenv("URL")
+
+        r = session.post(url, json=payload, timeout=10)
+        r.raise_for_status()
+
+        return {
+            "status": "requsted"
+        }
+
+    except Exception:
+
+        logging.exception("mailing api failed",
+        extra={"client_id": client_id, "req_id": req_id})
+
+        raise
 
 
 @deceng.post("/deceng")
@@ -244,9 +284,9 @@ def decengfunc(metrics: Metrics, bg: BackgroundTasks):
 
     print(f"REQUEST ARRIVED {client_id} and generated requested id is {req_id} for server {scale_message}")
 
-    if (scale_message == "UP"):
 
-        try:
+
+    try:
 
             scale = "UP"
 
@@ -262,9 +302,11 @@ def decengfunc(metrics: Metrics, bg: BackgroundTasks):
 
             print(f"instance started {instance_id}")
 
+            email = mail(email,client_id,scale,req_id,scale_message,total_instances)
 
 
-        except Exception:
+
+    except Exception:
             logging.exception(
                 "AWS caused issue during scaling",
                 extra={"req_id": req_id, "client_id": client_id}
@@ -275,46 +317,37 @@ def decengfunc(metrics: Metrics, bg: BackgroundTasks):
                 detail="aws issue"
             )
 
-    elif (scale_message == "DOWN"):
+@deceng.post("/deceng_down")
+def scale_down(metrics:Scale_down):
 
-        scale = "DOWN"
+    scale = metrics.scale_message
+    client_id = metrics.client_id
+    instance_id = metrics.instance_id
+    node_id = metrics.node_id
+    email = metrics.email
 
-        try:
+    req_id = str(uuid.uuid4())
+    base_path = f"/home/ubuntu/tsx/data/instances/{client_id}"
+    pending_file = f"{base_path}/pending.txt"
 
-            offboard = pop_next_instance(pending_file, req_id, client_id)
-            logging.info(f"The instances is deleted {offboard}",
-                         extra={"req_id": req_id, "client_id": client_id})
+    try:
 
-        except Exception:
+            offboard = removing_instance(instance_id, req_id, client_id)
+
+            logging.info(f"The instances is deleted for client",
+                         extra={"req_id": req_id, "client_id": client_id, "instance_id": instance_id, "node_id": node_id})
+
+            file_del = pop_next_instance(pending_file, req_id, client_id, instance_id)
+
+            logging.info(f"The instances is cleared from record",
+                         extra={"req_id": req_id, "client_id": client_id, "instance_id": instance_id, "node_id": node_id})
+
+
+            email = mail(email, client_id, scale, req_id, scale, total_instances=1)
+
+    except Exception:
 
             logging.exception(
                 "AWS caused issue during offboard",
                 extra={"req_id": req_id, "client_id": client_id}
             )
-
-    try:
-
-        payload = {
-            "email": email,
-            "client_id": client_id,
-            "total_instances": total_instances,
-            "scale": scale,
-            "req_id": req_id,
-            "message": scale_message
-
-        }
-
-        url = os.getenv("URL")
-
-        r = session.post(url, json=payload, timeout=10)
-        r.raise_for_status()
-
-        return {
-            "status": "requsted"
-        }
-
-    except Exception:
-
-        logging.exception("Failed to notify alert service",
-                          extra={"client_id": client_id, "req_id": req_id}
-                          )
