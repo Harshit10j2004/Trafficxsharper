@@ -72,7 +72,6 @@ class Metrics(BaseModel):
 
 class Scale_down(BaseModel):
 
-    scale_message: str
     client_id: int
     instance_id: str
     node_id: str
@@ -110,6 +109,9 @@ def start_instance(ami, total_instances, server_type, pending_file, req_id, clie
           --data-path-addr "${{LOCAL_IP}}" \\
           172.31.2.184:2377 || echo "Join failed" >&2
         """
+
+        #MANAGER_URL="http://13.233.139.228:9000/manager"
+        #dec_eng="http://13.233.117.62:8000/deceng_down"
 
         userdata = userdata_template.format(joining_token=joining_token)
 
@@ -320,7 +322,7 @@ def decengfunc(metrics: Metrics, bg: BackgroundTasks):
 @deceng.post("/deceng_down")
 def scale_down(metrics:Scale_down):
 
-    scale = metrics.scale_message
+    scale = "DOWN"
     client_id = metrics.client_id
     instance_id = metrics.instance_id
     node_id = metrics.node_id
@@ -343,7 +345,7 @@ def scale_down(metrics:Scale_down):
                          extra={"req_id": req_id, "client_id": client_id, "instance_id": instance_id, "node_id": node_id})
 
 
-            email = mail(email, client_id, scale, req_id, scale, total_instances=1)
+            email = mail(email, client_id, scale, req_id,  total_instances=1)
 
     except Exception:
 

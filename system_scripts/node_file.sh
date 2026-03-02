@@ -1,14 +1,16 @@
 #!/bin/bash
-set -euo pipefail
+set -x
 
 source /home/ubuntu/tsx/data/data.env
 
 
 cpu_thresold=20
 mem_thresold=20
-NODE_ID=$(docker info --format '{{.Swarm.NodeID}}')
 
+NODE_ID_FILE="/home/ubuntu/tsx/data/node_id.txt"
+NODE_ID=$(cat "$NODE_ID_FILE" | tr -d '[:space:]')
 
+echo "hitpoint 1"
 INSTANCE_ID_FILE="/home/ubuntu/tsx/data/my-instance-id.txt"
 
 if [ ! -f "$INSTANCE_ID_FILE" ]; then
@@ -27,19 +29,30 @@ low_count=0
 
 while true; do
 
+  echo "hitpoint2"
+
+  cpu_idle=$(mpstat 1 1 | awk '/Average/ {print $12}')
   cpu_used=$(echo "100 - $cpu_idle" | bc)
   mem_used=$(free -m | awk '/Mem:/ {print $3}')
 
-  if(((cpu_thresold > cpu_used) && (mem_thresold > mem_used))); then
+  cpu_used_int=${cpu_used%%.*}
+  mem_used_int=${mem_used%%.*}
 
-    low_count=low_count+1
+  if (( cpu_thresold > cpu_used_int )); then
+
+    ((low_count++))
+
+    echo "hitpoint3"
 
   else
-    low_count = 0
+    low_count=0
+    echo "hitpoint4"
 
   fi
 
   if((low_count>3)); then
+
+    echo "hitpoint5"
 
     response=$(curl -s -X POST "$MANAGER_URL" -H "Content-Type: application/json" \
       -d "{\"node_id\": \"$NODE_ID\"}")
@@ -47,10 +60,10 @@ while true; do
     if echo "$response" | grep -q '"approved": true'; then
 
       echo "Approved → leaving swarm"
-      docker swarm leave --force
+      ./leaving.sh /home/ubuntu/tsx/codes
 
       response=$(curl -s -X POST "$dec_eng" -H "Content-Type: application/json" \
-        -d "{\"node_id\": \"$NODE_ID\" , \"instance_id\": \"$INSTANCE_ID\"}")
+        -d "{\"node_id\": \"$NODE_ID\" , \"instance_id\": \"$INSTANCE_ID\", \"email\": \"$EMAIL\",\"client_id\": \"$CLIENT_ID\" }")
 
     else
 
@@ -58,7 +71,7 @@ while true; do
     fi
   fi
 
-  sleep 300
+  sleep 10
 
 done
 
