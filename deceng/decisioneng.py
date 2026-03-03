@@ -210,10 +210,10 @@ def pop_next_instance(pending_file, req_id, client_id,instance_id):
 
 def removing_instance(id, client_id, req_id):
     try:
-        targets = [{"Id": iid} for iid in id]
 
+        InstanceIds = [id.strip()]
         get_ec2().terminate_instances(
-            InstanceIds=targets
+            InstanceIds=InstanceIds
         )
 
         logging.info("instance is terminated sucessfully",
@@ -226,15 +226,14 @@ def removing_instance(id, client_id, req_id):
             extra={"req_id": req_id, "client_id": client_id}
         )
 
-def mail(email,client_id,scale,req_id,scale_message,total_instances):
+def mail(email,client_id,req_id,scale_message,total_instances):
     try:
         payload = {
             "email": email,
             "client_id": client_id,
             "total_instances": total_instances,
-            "scale": scale,
             "req_id": req_id,
-            "message": scale_message
+            "scale": scale_message
 
         }
 
@@ -322,7 +321,7 @@ def decengfunc(metrics: Metrics, bg: BackgroundTasks):
 @deceng.post("/deceng_down")
 def scale_down(metrics:Scale_down):
 
-    scale = "DOWN"
+    scale_message = "DOWN"
     client_id = metrics.client_id
     instance_id = metrics.instance_id
     node_id = metrics.node_id
@@ -345,7 +344,9 @@ def scale_down(metrics:Scale_down):
                          extra={"req_id": req_id, "client_id": client_id, "instance_id": instance_id, "node_id": node_id})
 
 
-            email = mail(email, client_id, scale, req_id,  total_instances=1)
+            email = mail(email, client_id, req_id, scale_message, total_instances=1)
+
+
 
     except Exception:
 
