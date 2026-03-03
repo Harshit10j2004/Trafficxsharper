@@ -6,7 +6,6 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 import os
 import logging
-import mysql.connector
 from mysql.connector import pooling
 import requests
 import uuid
@@ -102,23 +101,6 @@ def get_connection():
         conn.close()
 
 
-def if_down(total_cpu, total_rps, total_queue, req_id, client_id):
-    try:
-
-        if (
-                total_cpu <= 1 and
-                total_rps <= 1 and
-                total_queue <= 1
-        ):
-            return 1
-        return 0
-
-    except Exception:
-
-        logging.exception("function if_down failed",
-                          extra={"req_id": req_id, "client_id": client_id})
-
-
 def increasing_window(cur_value, last_value, total):
     if (
             cur_value > last_value
@@ -166,39 +148,6 @@ def scaling(message, email, ami, server_type, server_expected, client_id, req_id
             detail=f" deceng api not responding"
 
         )
-
-
-def scaling_down(client_id, req_id, email, message):
-    try:
-
-        payload = {
-            "client_id": client_id,
-            "req_id": req_id,
-            "email": email,
-            "scale_message": message,
-            "total_instance": 0,
-            "ami": "NA",
-            "server_type": "NA"
-
-        }
-
-        url = os.getenv("DEC_URL")
-
-        r = requests.post(url, json=payload, timeout=1)
-        r.raise_for_status()
-
-
-    except Exception:
-
-        logging.exception("scaling down api caused issue",
-                          extra={"req_id": req_id, "client_id": client_id})
-
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f" deceng api not responding"
-
-        )
-
 
 def prediction(client_id, timestamp, cpu, cpu_idle, live_connections, freeze_window, req_id, rps, queue_pressure,
                conn_rate):
@@ -452,11 +401,6 @@ def broker1func(metrics: Metrics, conn=Depends(get_connection)):
             if cur_time - int(last_scale_up_time) < COOLDOWN:
                 in_cooldown = True
 
-        if last_scale_down_time:
-            if cur_time - int(last_scale_down_time) < D_COOLDOWN:
-                in_d_cooldown = True
-
-        do_scale_down = if_down(total_cpu_window, total_cur_queue, total_cur_rps, req_id, client_id)
 
         if not in_cooldown and app_red_zone is True:
             scaling("UP", email, ami, server_type, server_expected, client_id, req_id)
@@ -635,23 +579,6 @@ def broker1func(metrics: Metrics, conn=Depends(get_connection)):
                              extra={"req_id": req_id, "client_id": client_id})
                 return {"status": "scaled_ml"}
 
-        if not in_d_cooldown and do_scale_down == 1:
-
-            scaling_down(client_id, req_id, email, "DOWN")
-
-            try:
-
-                cursor.execute(
-                    "UPDATE system_info SET last_scale_down_time = %s WHERE client_id = %s",
-                    (cur_time, client_id)
-                )
-                conn.commit()
-
-            except Exception:
-
-                logging.exception("writing in db caused issue",
-                                  extra={"req_id": req_id, "client_id": client_id}
-                                  )
 
     except Exception as e:
         logging.exception(f"Scaling logic failed",

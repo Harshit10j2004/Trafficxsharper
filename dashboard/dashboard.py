@@ -18,7 +18,6 @@ l_buf = int(input("Enter lower buffer: "))
 h_buf = int(input("Enter higher buffer: "))
 
 
-
 print("Now we need the technical info for finding best server and make best security group:")
 time.sleep(5)
 

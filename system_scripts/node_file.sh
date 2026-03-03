@@ -50,28 +50,29 @@ while true; do
 
   fi
 
-  if((low_count>3)); then
+  if (( low_count > 3 )); then
+      echo "hitpoint5 - low_count reached $low_count"
 
-    echo "hitpoint5"
+      response=$(curl -s -X POST "$MANAGER_URL" -H "Content-Type: application/json" \
+        -d "{\"node_id\": \"$NODE_ID\"}")
 
-    response=$(curl -s -X POST "$MANAGER_URL" -H "Content-Type: application/json" \
-      -d "{\"node_id\": \"$NODE_ID\"}")
+      echo "DEBUG: raw curl response = [$response]"
 
-    if echo "$response" | grep -q '"approved": true'; then
+      if echo "$response" | grep -q '"approved": *true'; then
 
-      echo "Approved → leaving swarm"
-      ./leaving.sh /home/ubuntu/tsx/codes
+          /home/ubuntu/tsx/codes/leaving.sh /home/ubuntu/tsx/codes || echo "leaving.sh failed (exit $?)"
 
-      response=$(curl -s -X POST "$dec_eng" -H "Content-Type: application/json" \
-        -d "{\"node_id\": \"$NODE_ID\" , \"instance_id\": \"$INSTANCE_ID\", \"email\": \"$EMAIL\",\"client_id\": \"$CLIENT_ID\" }")
+          response=$(curl -s -X POST "$dec_eng" -H "Content-Type: application/json" \
+            -d "{\"node_id\": \"$NODE_ID\" , \"instance_id\": \"$INSTANCE_ID\", \"email\": \"$EMAIL\",\"client_id\": \"$CLIENT_ID\" }")
+      else
+          echo "DEBUG: approved condition FALSE → entering else block"
+          low_count=0
+          echo "Not approved → count reset"
+      fi
 
-    else
-
-      low_count=0
-    fi
+      echo "DEBUG: inner if-else block finished"
   fi
 
   sleep 10
-
 done
 
