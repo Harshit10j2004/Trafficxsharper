@@ -70,12 +70,12 @@ class Metrics(BaseModel):
     scale_message: str
     email: str
     total_instance: int
-    ami: str
-    server_type: str
+    ami: list
+    server_type: list
     client_id: str
     req_id: str
     joining_token: str
-    security_group: str
+    security_group: list
 
 
 class Scale_down(BaseModel):
@@ -411,26 +411,35 @@ def decengfunc(metrics: Metrics, bg: BackgroundTasks):
         instance_for_aws = int(total_instances/2)
         instance_for_azure = total_instances - instance_for_aws
 
+        aws_ami = ami[0]
+        azure_ami = ami[1]
+
+        aws_sec = security_group[0]
+        azure_sec = security_group[1]
+
+        aws_st = server_type[0]
+        azure_st = server_type[1]
+
         instance_id = start_instance(
-            ami,
+            aws_ami,
             instance_for_aws,
-            server_type,
+            aws_st,
             pending_file,
             req_id,
             client_id,
             joining_token,
-            security_group
+            aws_sec
         )
 
         instance_id_azure = start_instance_azure(
-            ami,
+            azure_ami,
             instance_for_azure,
-            server_type,
+            azure_st,
             pending_file,
             req_id,
             client_id,
             joining_token,
-            security_group
+            azure_sec
         )
 
         print(f"instance started {instance_id}")
