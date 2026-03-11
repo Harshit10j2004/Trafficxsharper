@@ -83,6 +83,7 @@ class Scale_down(BaseModel):
     instance_id: str
     node_id: str
     email: str
+    provider: str
 
 
 ec2_client = None
@@ -468,6 +469,7 @@ def scale_down(metrics: Scale_down):
     instance_id = metrics.instance_id
     node_id = metrics.node_id
     email = metrics.email
+    provider = metrics.provider
 
     req_id = str(uuid.uuid4())
     base_path = f"/home/ubuntu/tsx/data/instances/{client_id}"
@@ -475,10 +477,20 @@ def scale_down(metrics: Scale_down):
 
     try:
 
-        offboard = removing_instance(instance_id, req_id, client_id)
+        if provider == "AWS":
 
-        logging.info(f"The instances is deleted for client",
+            offboard = removing_instance(instance_id, req_id, client_id)
+
+            logging.info(f"The instances is deleted for client",
                      extra={"req_id": req_id, "client_id": client_id, "instance_id": instance_id, "node_id": node_id})
+
+        if provider == "AZURE":
+
+            offboard = removing_instance_azure(instance_id, req_id, client_id)
+
+            logging.info(f"The instances is deleted for client",
+                         extra={"req_id": req_id, "client_id": client_id, "instance_id": instance_id,
+                                "node_id": node_id})
 
         file_del = pop_next_instance(pending_file, req_id, client_id, instance_id)
 

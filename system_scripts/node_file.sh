@@ -18,7 +18,8 @@ if [ ! -f "$INSTANCE_ID_FILE" ]; then
     exit 1
 fi
 
-INSTANCE_ID=$(cat "$INSTANCE_ID_FILE" | tr -d '[:space:]')
+instance_id=$(awk -F '[{}, ]+' '{print $2}' "$INSTANCE_ID_FILE")
+provider=$(awk -F '[{}, ]+' '{print $4}' "$INSTANCE_ID_FILE")
 
 if [ -z "$INSTANCE_ID" ]; then
     echo "Error: Empty instance ID in file" >&2
@@ -63,7 +64,7 @@ while true; do
           /home/ubuntu/tsx/codes/leaving.sh /home/ubuntu/tsx/codes || echo "leaving.sh failed (exit $?)"
 
           response=$(curl -s -X POST "$dec_eng" -H "Content-Type: application/json" \
-            -d "{\"node_id\": \"$NODE_ID\" , \"instance_id\": \"$INSTANCE_ID\", \"email\": \"$EMAIL\",\"client_id\": \"$CLIENT_ID\" }")
+            -d "{\"node_id\": \"$NODE_ID\" , \"instance_id\": \"$INSTANCE_ID\", \"email\": \"$EMAIL\",\"client_id\": \"$CLIENT_ID\", \"provider\": \"$provider\"}")
       else
           echo "DEBUG: approved condition FALSE → entering else block"
           low_count=0

@@ -16,6 +16,6 @@ fi
 
 NODE_ID=$(docker info --format '{{.Swarm.NodeID}}')
 
-echo "$VM_ID"   > /home/ubuntu/tsx/data/my-instance-id.txt
+echo "{$VM_ID , AZURE}"   > /home/ubuntu/tsx/data/my-instance-id.txt
 echo "$NODE_ID" > /home/ubuntu/tsx/data/node_id.txt
 
