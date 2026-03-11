@@ -13,5 +13,5 @@ if [ -z "$INSTANCE_ID" ]; then
     INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
 fi
 
-echo "$INSTANCE_ID" > /home/ubuntu/tsx/data/my-instance-id.txt
+echo "{$INSTANCE_ID , AWS}" > /home/ubuntu/tsx/data/my-instance-id.txt
 echo "$NODE_ID" > /home/ubuntu/tsx/data/node_id.txt

@@ -9,7 +9,6 @@ import logging
 from mysql.connector import pooling
 import requests
 import uuid
-import sqlite3
 
 
 class Metrics(BaseModel):
@@ -238,14 +237,6 @@ def broker1func(metrics: Metrics, conn=Depends(get_connection)):
 
         raise
 
-    try:
-        sqll_conn = sqlite3.connect("/home/ubuntu/tsx/data/client_data.db")
-        sqll_cursor = sqll_conn.cursor()
-
-
-    except Exception:
-
-        logging.exception("connection caused issue to sqllite")
 
     timestamp = metrics.timestamp
     client_ts = datetime.strptime(metrics.timestamp, "%Y-%m-%d %H:%M:%S.%f").replace(tzinfo=timezone.utc)
@@ -273,7 +264,7 @@ def broker1func(metrics: Metrics, conn=Depends(get_connection)):
 
     try:
 
-        query2 = "select client_name,thresold,l_buff,h_buff,email,ami,server_type from client_info where client_id = %s"
+        query2 = "select client_name,thresold,l_buff,h_buff,email,ami,server_type,security_group from client_info where client_id = %s"
 
         cursor.execute(query2, (client_id,))
 
@@ -291,8 +282,9 @@ def broker1func(metrics: Metrics, conn=Depends(get_connection)):
         email = db[4]
         ami = db[5]
         server_type = db[6]
+        security_group = db[7]
 
-        query = "select last_scale_up_time,last_scale_down_time from system_info where client_id = %s"
+        query = "select last_scale_up_time,last_scale_down_time,total_cpu_window,total_cur_fluc ,total_cur_ml_window,total_cur_queue,total_cur_rps,total_cur_rps,last_queue,last_rps,last_cpu,last_ml_window from system_info where client_id = %s"
 
         cursor.execute(query, (client_id,))
 
@@ -306,6 +298,15 @@ def broker1func(metrics: Metrics, conn=Depends(get_connection)):
 
         last_scale_up_time = db[0]
         last_scale_down_time = db[1]
+        total_cpu_window = db[2]
+        total_cur_fluc = db[3]
+        total_cur_ml_window = db[4]
+        total_cur_queue =db[5]
+        total_cur_rps =db[6]
+        last_queue = db[7]
+        last_rps = db[8]
+        last_cpu = db[9]
+        last_ml_window = db[10]
 
     except Exception:
 
@@ -314,60 +315,6 @@ def broker1func(metrics: Metrics, conn=Depends(get_connection)):
                           )
         raise HTTPException(500, "db failure")
 
-    try:
-
-        total_cpu_window = None
-        total_cur_fluc = None
-        total_cur_ml_window = None
-        total_cur_queue = None
-        total_cur_rps = None
-        last_queue = None
-        last_rps = None
-        last_cpu = None
-        last_ml_window = None
-
-        sqll_query = "select total_cpu_window,total_cur_fluc,total_cur_ml_window,total_cur_queue,total_cur_rps,last_queue,last_rps,last_cpu,last_ml_window from local_state where client_id = ?"
-
-        sqll_cursor.execute(sqll_query, (client_id,))
-
-        local_data = sqll_cursor.fetchone()
-
-        if(local_data is None):
-            sqll_query10 = "insert into local_state (client_id, total_cpu_window,total_cur_fluc,total_cur_ml_window,total_cur_queue,total_cur_rps,last_queue,last_rps,last_cpu,last_ml_window) values (?,?,?,?,?,?,?,?,?,?)"
-            values = (client_id,0,0,0,0,0,0,0,0,0)
-
-            sqll_cursor.execute(sqll_query10,values)
-            sqll_conn.commit()
-
-            total_cpu_window = 0
-            total_cur_fluc = 0
-            total_cur_ml_window = 0
-            total_cur_queue = 0
-            total_cur_rps = 0
-            last_queue = 0
-            last_rps = 0
-            last_cpu = 0
-            last_ml_window = 0
-
-        else:
-
-            total_cpu_window = local_data[0]
-            total_cur_fluc = local_data[1]
-            total_cur_ml_window = local_data[2]
-            total_cur_queue = local_data[3]
-            total_cur_rps = local_data[4]
-            last_queue = local_data[5]
-            last_rps = local_data[6]
-            last_cpu = local_data[7]
-            last_ml_window = local_data[8]
-
-
-    except Exception:
-
-        logging.exception("Issue raised in data collection from db",
-                          extra={"req_id": req_id, "client_id": client_id}
-                          )
-        raise HTTPException(500, "db failure")
 
     try:
 
@@ -379,14 +326,10 @@ def broker1func(metrics: Metrics, conn=Depends(get_connection)):
         rps_increasing = increasing_window(rps, last_rps, total_cur_rps)
 
 
-        sql_query1 = f"update local_state set total_cur_queue = ? , last_queue = ? , total_cur_rps = ? , last_rps = ?, last_cpu = ? where client_id = ?"
+        sql_query1 = f"update system_info set total_cur_queue =%s , last_queue = %s  , total_cur_rps =%s , last_rps =%s , last_cpu = %s  where client_id = %s"
+        values1 = (queue_increasing, queue_pressure, rps_increasing, rps, cpu ,client_id)
 
-        sqll_cursor.execute(
-            sql_query1,
-            (queue_increasing, queue_pressure, rps_increasing, rps, cpu ,client_id)
-        )
-
-        sqll_conn.commit()
+        cursor.execute(sql_query1,values1)
 
         app_red_zone = False
 
@@ -407,19 +350,17 @@ def broker1func(metrics: Metrics, conn=Depends(get_connection)):
 
 
             sql_query5 = f"update local_state set total_cur_queue = ?, total_cur_rps = ? where client_id = ?"
-            sqll_cursor.execute(sql_query5, (0, 0, client_id))
-
-            sqll_conn.commit()
+            values2 = (0, 0, client_id)
+            cursor.execute(sql_query5,values2)
 
         if cpu >= threshold + buffer_z:
 
             new_total_cpu = total_cpu_window + 1
 
             sql_query2 = f"update local_state set total_cpu_window = ? where client_id = ?"
-            sqll_cursor.execute(sql_query2, (new_total_cpu,client_id,))
+            values3 = (new_total_cpu,client_id,)
 
-            sqll_conn.commit()
-
+            cursor.execute(sql_query2,values3)
 
         else:
             cur_fluc = total_cur_fluc
@@ -427,9 +368,9 @@ def broker1func(metrics: Metrics, conn=Depends(get_connection)):
             if cur_fluc > 2:
 
                 sql_query3 = f"update local_state set total_cpu_window = ? where client_id = ?"
-                sqll_cursor.execute(sql_query3, (0, client_id,))
+                values4 = (0, client_id,)
 
-                sqll_conn.commit()
+                cursor.execute(sql_query3,values4)
 
 
             else:
@@ -437,9 +378,9 @@ def broker1func(metrics: Metrics, conn=Depends(get_connection)):
                 data = cur_fluc + 1
 
                 sql_query4 = f"update local_state set total_cur_fluc = ? where client_id = ?"
-                sqll_cursor.execute(sql_query4, (data, client_id,))
+                values5 = (data, client_id,)
 
-                sqll_conn.commit()
+                cursor.execute(sql_query4,values5)
 
         if total_cpu_window >= 3 and not in_cooldown:
             scaling("UP", email, ami, server_type, server_expected, client_id, req_id)
@@ -447,9 +388,9 @@ def broker1func(metrics: Metrics, conn=Depends(get_connection)):
 
 
             sql_query6 = f"update local_state set total_cpu_window = ?, total_cur_ml_window = ? where client_id = ?"
-            sqll_cursor.execute(sql_query6, (0, 0, client_id))
+            values6 = (0, 0, client_id)
 
-            sqll_conn.commit()
+            cursor.execute(sql_query6, values6)
 
             try:
 
@@ -546,9 +487,9 @@ def broker1func(metrics: Metrics, conn=Depends(get_connection)):
                     return
 
             sql_query8 = "update local_state set total_cur_ml_window = ?,last_ml_window = ? where client_id = ?"
-            sqll_cursor.execute(sql_query8, (new_cur_ml, predicted_cpu, client_id))
+            values6 =  (new_cur_ml, predicted_cpu, client_id)
 
-            sqll_conn.commit()
+            cursor.execute(sql_query8, values6)
 
             if (
                     new_cur_ml >= 3
@@ -557,9 +498,9 @@ def broker1func(metrics: Metrics, conn=Depends(get_connection)):
                 scaling("ML", email, ami, server_type, server_expected, client_id, req_id)
 
                 sql_query9 = "update local_state set total_cpu_window = ?, total_cur_ml_window = ? where client_id = ?"
-                sqll_cursor.execute(sql_query9, (0, 0, client_id))
+                values7 =  (0, 0, client_id)
 
-                sqll_conn.commit()
+                cursor.execute(sql_query9, values7)
 
                 try:
 
@@ -603,7 +544,6 @@ def broker1func(metrics: Metrics, conn=Depends(get_connection)):
             detail=f"File_writing_fails"
         )
 
-    sqll_conn.close()
 
     return {"status": "forwarded"}
 
