@@ -102,29 +102,28 @@ def start_instance_azure(image, total_instances, server_type, pending_file, req_
 
         userdata_template = """#!/bin/bash
 
-                LOCAL_IP=$(curl -s -H "Metadata:true" "http://169.254.169.254/metadata/instance/network/interface/0/ipv4/ipAddress/0/privateIpAddress?api-version=2021-02-01&format=text")
+        LOCAL_IP=$(curl -s -H "Metadata:true" "http://169.254.169.254/metadata/instance/network/interface/0/ipv4/ipAddress/0/privateIpAddress?api-version=2021-02-01&format=text")
 
-                until systemctl is-active --quiet docker; do sleep 3; done
 
-                docker swarm join \\
-                  --token {joining_token} \\
-                  --advertise-addr "${{LOCAL_IP}}" \\
-                  --data-path-addr "${{LOCAL_IP}}" \\
-                  172.31.2.184:2377 || echo "Join failed" >&2
-                """
+        until systemctl is-active --quiet docker; do sleep 3; done
 
+        docker swarm join \\
+          --token {joining_token} \\
+          --advertise-addr "${{LOCAL_IP}}" \\
+          --data-path-addr "${{LOCAL_IP}}" \\
+          172.31.2.184:2377 || echo "Join failed" >&2
+          
+            """
         userdata = userdata_template.format(joining_token=joining_token)
         custom_data = base64.b64encode(userdata.encode('utf-8')).decode('ascii')
 
         subscription_id = os.getenv("SUB_ID")
         resource_group = os.getenv("RES_GRP")
-        location = "eastus"
-
-        subnet_id = os.getenv("SUBNET_ID")
-
-        admin_username = os.getenv("AZURE_NAME")
-        admin_password = os.getenv("AZURE_PASS")
-        base_vm_name = "TSX-WORKER"
+        location = "japaneast"
+        subnet_id = os.getenv("SUB_ID")
+        admin_username = "harshit"
+        admin_password = os.getenv("ADM_PAS")
+        vm_name_prefix = "tsx-worker"
 
         credential = DefaultAzureCredential()
         compute_client = ComputeManagementClient(credential, subscription_id)
@@ -133,55 +132,89 @@ def start_instance_azure(image, total_instances, server_type, pending_file, req_
         instance_ids = []
 
         for i in range(1, total_instances + 1):
-            vm_name = f"{base_vm_name}-{client_id}-{i:03d}"
-
-            print(f"Creating VM: {vm_name}")
-
+            vm_name = f"{vm_name_prefix}-{client_id}-{i:03d}"
             nic_name = f"{vm_name}-nic"
-            nic_poller = network_client.network_interfaces.begin_create_or_update(
-                resource_group,
-                nic_name,
-                {
-                    "location": location,
-                    "network_security_group": {"id": security_group_id},
-                    "ip_configurations": [{
-                        "name": "ipconfig1",
-                        "subnet": {"id": subnet_id},
+            public_ip_name = f"{vm_name}-pip"
 
-                    }]
-                }
+            print(f"Creating Azure VM: {vm_name}")
+
+
+            nic_params = {
+                "location": location,
+                "ip_configurations": [{
+                    "name": "ipconfig1",
+                    "subnet": {"id": subnet_id},
+                    "private_ip_allocation_method": "Dynamic"
+                }]
+            }
+
+            if security_group_id:
+                nic_params["network_security_group"] = {"id": security_group_id}
+
+            nic_poller = network_client.network_interfaces.begin_create_or_update(
+                resource_group, nic_name, nic_params
             )
             nic = nic_poller.result()
 
             vm_params = {
                 "location": location,
-                "hardware_profile": {"vm_size": server_type},
+                "hardware_profile": {
+                    "vm_size": server_type
+                },
                 "storage_profile": {
-                    "image_reference": {"id": image},
+                    "image_reference": {
+                        "id": image
+                    },
                     "os_disk": {
                         "create_option": "FromImage",
-                        "managed_disk": {"storage_account_type": "Standard_LRS"}
+                        "managed_disk": {"storage_account_type": "Standard_LRS"},
+                        "delete_option": "Delete"
                     }
                 },
                 "os_profile": {
                     "computer_name": vm_name,
                     "admin_username": admin_username,
                     "admin_password": admin_password,
-                    "custom_data": custom_data,
-
+                    "custom_data": custom_data
                 },
                 "network_profile": {
-                    "network_interfaces": [{"id": nic.id}]
+                    "network_interfaces": [{
+                        "id": nic.id,
+                        "primary": True
+                    }]
+                },
+                "security_profile": {
+                    "security_type": "TrustedLaunch",
+                    "uefi_settings": {
+                        "secure_boot_enabled": True,
+                        "v_tpm_enabled": True
+                    }
+                },
+                "tags": {
+                    "Name": f"tsx-worker-{client_id}",
+                    "ClientId": str(client_id),
+                    "RequestId": str(req_id)
                 }
             }
+
+
+            if "linux" in image.lower():
+                vm_params["os_profile"]["linux_configuration"] = {
+                    "disable_password_authentication": False
+                }
+
 
             vm_poller = compute_client.virtual_machines.begin_create_or_update(
                 resource_group, vm_name, vm_params
             )
             vm = vm_poller.result()
 
-            print(f"  → Created: {vm.name}")
-            instance_ids.append(vm.name)
+            print(f"  → Created VM: {vm.name} (ID: {vm.vm_id})")
+
+
+            instance_ids.append(vm.id)
+
+            time.sleep(1)
 
             os.makedirs(os.path.dirname(pending_file), exist_ok=True)
             with open(pending_file, "a") as f:
