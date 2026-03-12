@@ -315,6 +315,17 @@ def broker1func(metrics: Metrics, conn=Depends(get_connection)):
                           )
         raise HTTPException(500, "db failure")
 
+    try:
+        if missing_server_count > int(server_expected / 10):
+            scaling("UP",email, ami, server_type, server_expected, client_id, req_id)
+
+    except Exception:
+
+        logging.exception("Issue raised during scaling by missing servers",
+                          extra={"req_id": req_id, "client_id": client_id}
+                          )
+        raise HTTPException(500, "db failure")
+
 
     try:
 
@@ -546,5 +557,3 @@ def broker1func(metrics: Metrics, conn=Depends(get_connection)):
 
 
     return {"status": "forwarded"}
-
-
