@@ -113,7 +113,7 @@ def increasing_window(cur_value, last_value, total):
     return total
 
 
-def scaling(message, email, ami, server_type, server_expected, client_id, req_id):
+def scaling(message, email, ami, server_type, server_expected, client_id, req_id,security_group):
     try:
 
         if (server_expected < 10):
@@ -128,7 +128,8 @@ def scaling(message, email, ami, server_type, server_expected, client_id, req_id
             "server_type": server_type,
             "total_instance": total_instance,
             "client_id": client_id,
-            "req_id": req_id
+            "req_id": req_id,
+            "security_group": security_group
 
         }
 
@@ -317,7 +318,7 @@ def broker1func(metrics: Metrics, conn=Depends(get_connection)):
 
     try:
         if missing_server_count > int(server_expected / 10):
-            scaling("UP",email, ami, server_type, server_expected, client_id, req_id)
+            scaling("UP",email, ami, server_type, server_expected, client_id, req_id,security_group)
 
     except Exception:
 
@@ -357,7 +358,7 @@ def broker1func(metrics: Metrics, conn=Depends(get_connection)):
 
 
         if not in_cooldown and app_red_zone is True:
-            scaling("UP", email, ami, server_type, server_expected, client_id, req_id)
+            scaling("UP", email, ami, server_type, server_expected, client_id, req_id,security_group)
 
 
             sql_query5 = f"update local_state set total_cur_queue = ?, total_cur_rps = ? where client_id = ?"
@@ -394,7 +395,7 @@ def broker1func(metrics: Metrics, conn=Depends(get_connection)):
                 cursor.execute(sql_query4,values5)
 
         if total_cpu_window >= 3 and not in_cooldown:
-            scaling("UP", email, ami, server_type, server_expected, client_id, req_id)
+            scaling("UP", email, ami, server_type, server_expected, client_id, req_id,security_group)
 
 
 
@@ -506,7 +507,7 @@ def broker1func(metrics: Metrics, conn=Depends(get_connection)):
                     new_cur_ml >= 3
 
             ):
-                scaling("ML", email, ami, server_type, server_expected, client_id, req_id)
+                scaling("ML", email, ami, server_type, server_expected, client_id, req_id,security_group)
 
                 sql_query9 = "update local_state set total_cpu_window = ?, total_cur_ml_window = ? where client_id = ?"
                 values7 =  (0, 0, client_id)
