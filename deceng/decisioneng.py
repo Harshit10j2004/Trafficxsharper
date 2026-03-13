@@ -111,7 +111,7 @@ def start_instance_azure(image, total_instances, server_type, pending_file, req_
           --token {joining_token} \\
           --advertise-addr "${{LOCAL_IP}}" \\
           --data-path-addr "${{LOCAL_IP}}" \\
-          172.31.2.184:2377 || echo "Join failed" >&2
+          3.109.123.199:2377 || echo "Join failed" >&2
           
             """
         userdata = userdata_template.format(joining_token=joining_token)
@@ -120,7 +120,7 @@ def start_instance_azure(image, total_instances, server_type, pending_file, req_
         subscription_id = os.getenv("SUB_ID")
         resource_group = os.getenv("RES_GRP")
         location = "japaneast"
-        subnet_id = os.getenv("SUB_ID")
+        subnet_id = os.getenv("SUBNET_ID")
         admin_username = "harshit"
         admin_password = os.getenv("ADM_PAS")
         vm_name_prefix = "tsx-worker"
@@ -243,7 +243,7 @@ def start_instance(ami, total_instances, server_type, pending_file, req_id, clie
           --token {joining_token} \\
           --advertise-addr "${{LOCAL_IP}}" \\
           --data-path-addr "${{LOCAL_IP}}" \\
-          172.31.2.184:2377 || echo "Join failed" >&2
+          3.109.123.199:2377 || echo "Join failed" >&2
         """
 
         security_group_main = [security_group]
@@ -461,8 +461,8 @@ def decengfunc(metrics: Metrics, bg: BackgroundTasks):
             pending_file,
             req_id,
             client_id,
-            joining_token,
-            aws_sec
+            aws_sec,
+            joining_token
         )
 
         instance_id_azure = start_instance_azure(
@@ -473,13 +473,12 @@ def decengfunc(metrics: Metrics, bg: BackgroundTasks):
             req_id,
             client_id,
             joining_token,
-            azure_sec
+            azure_sec,
+
         )
 
         print(f"instance started {instance_id}")
         print(f"instance started {instance_id_azure}")
-
-        email = mail(email, client_id, scale, req_id, scale_message, total_instances)
 
 
 
@@ -530,7 +529,7 @@ def scale_down(metrics: Scale_down):
         logging.info(f"The instances is cleared from record",
                      extra={"req_id": req_id, "client_id": client_id, "instance_id": instance_id, "node_id": node_id})
 
-        email = mail(email, client_id, req_id, scale_message, total_instances=1)
+        email = mail(email, client_id, req_id, scale_message, total_instances=2)
 
     except Exception:
 
