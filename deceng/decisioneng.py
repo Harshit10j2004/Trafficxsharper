@@ -103,14 +103,14 @@ def start_instance_azure(image, total_instances, server_type, pending_file, req_
         userdata_template = """#!/bin/bash
 
         LOCAL_IP=$(curl -s -H "Metadata:true" "http://169.254.169.254/metadata/instance/network/interface/0/ipv4/ipAddress/0/privateIpAddress?api-version=2021-02-01&format=text")
-
+        PUBLIC_IP=$(curl -s -H "Metadata:true" "http://169.254.169.254/metadata/instance/network/interface/0/ipv4/ipAddress/0/publicIpAddress?api-version=2021-02-01&format=text")
 
         until systemctl is-active --quiet docker; do sleep 3; done
 
         docker swarm join \\
           --token {joining_token} \\
-          --advertise-addr "${{LOCAL_IP}}" \\
-          --data-path-addr "${{LOCAL_IP}}" \\
+          --advertise-addr "${{PUBLIC_IP}}" \\
+          --data-path-addr "${{PUBLIC_IP}}" \\
           3.109.123.199:2377 || echo "Join failed" >&2
           
             """
@@ -138,12 +138,25 @@ def start_instance_azure(image, total_instances, server_type, pending_file, req_
 
             print(f"Creating Azure VM: {vm_name}")
 
+            public_ip_poller = network_client.public_ip_addresses.begin_create_or_update(
+                resource_group,
+                public_ip_name,
+                {
+                    "location": location,
+                    "sku": {"name": "Standard"},
+                    "public_ip_allocation_method": "Static",
+                    "public_ip_address_version": "IPV4"
+                }
+            )
+            public_ip = public_ip_poller.result()
+
 
             nic_params = {
                 "location": location,
                 "ip_configurations": [{
                     "name": "ipconfig1",
                     "subnet": {"id": subnet_id},
+                    "public_ip_address": {"id": public_ip.id},
                     "private_ip_allocation_method": "Dynamic"
                 }]
             }
