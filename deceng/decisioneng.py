@@ -7,6 +7,7 @@ from azure.mgmt.compute import ComputeManagementClient
 from azure.identity import DefaultAzureCredential
 from azure.mgmt.network import NetworkManagementClient
 from azure.mgmt.resource import ResourceManagementClient
+import concurrent.futures
 import os
 import logging
 import requests
@@ -467,32 +468,15 @@ def decengfunc(metrics: Metrics, bg: BackgroundTasks):
         aws_st = server_type[0]
         azure_st = server_type[1]
 
-        instance_id = start_instance(
-            aws_ami,
-            instance_for_aws,
-            aws_st,
-            pending_file,
-            req_id,
-            client_id,
-            aws_sec,
-            joining_token
-        )
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
 
-        instance_id_azure = start_instance_azure(
-            azure_ami,
-            instance_for_azure,
-            azure_st,
-            pending_file,
-            req_id,
-            client_id,
-            joining_token,
-            azure_sec,
+            for_aws = executor.submit(start_instance,
+            aws_ami, instance_for_aws, aws_st, pending_file,
+            req_id, client_id, aws_sec, joining_token)
 
-        )
-
-        print(f"instance started {instance_id}")
-        print(f"instance started {instance_id_azure}")
-
+            for_azure = executor.submit(start_instance_azure,
+            azure_ami, instance_for_azure, azure_st, pending_file,
+            req_id, client_id, joining_token, azure_sec)
 
 
     except Exception:
