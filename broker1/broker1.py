@@ -9,6 +9,8 @@ import logging
 from mysql.connector import pooling
 import requests
 import uuid
+import redis
+import json
 
 
 class Metrics(BaseModel):
@@ -90,6 +92,26 @@ def shutdown_event():
     if db_pool is not None:
         db_pool._remove_connections()
         print("Database connection pool closed")
+
+redis_client: redis.Redis | None = None
+
+@broker1api.on_event("startup")
+def startup_redis():
+    global redis_client
+    redis_client = redis.Redis(
+        host='127.0.0.1',
+        port=6379,
+        decode_responses=True
+    )
+    print("Redis connected")
+
+
+@broker1api.on_event("shutdown")
+def shutdown_redis():
+    global redis_client
+    if redis_client:
+        redis_client.close()
+        print("Redis closed")
 
 
 def get_connection():
@@ -262,6 +284,8 @@ def broker1func(metrics: Metrics, conn=Depends(get_connection)):
 
     row = [timestamp, cpu, cpu_idle, totalram, ramused, diskusage, networkin, networkout, live_connections, client_id,
            server_expected, server_responded, missing_server_count]
+
+    redis_client.publish("metrics", json.dumps(row))
 
     try:
 
