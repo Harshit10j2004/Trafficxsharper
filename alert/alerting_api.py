@@ -32,7 +32,7 @@ class AlertData(BaseModel):
 emailapp = FastAPI()
 
 @emailapp.post("/email")
-def mainmail(data:AlertData):
+async def mainmail(data:AlertData):
 
 
     email = data.email
