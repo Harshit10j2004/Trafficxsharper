@@ -5,7 +5,7 @@ source /home/ubuntu/tsx/data/data.env
 
 BASE_DIR="$window_file"
 NOW=$(date +%s)
-MAX_AGE=600   # seconds
+MAX_AGE=600
 
 for client_dir in "$BASE_DIR"/*; do
     [[ -d "$client_dir" ]] || continue
