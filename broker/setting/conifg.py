@@ -18,6 +18,7 @@ class data(BaseSettings):
     DATABASE: str
     LOG_FILE_DATABASE_S: str
     LOG_FILE_REDIS: str
+    DB_LINK: str
 
 
     class Config:

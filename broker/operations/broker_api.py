@@ -3,8 +3,7 @@ from pydantic import BaseModel
 import logging
 import uuid
 import json
-import redis
-from datetime import datetime, timezone
+from datetime import datetime
 from broker.functions.routers import for_ml
 from broker.functions.routers import for_scaling
 from broker.functions.supporters import check_incwindow
@@ -13,6 +12,8 @@ from broker.setting.conifg import settings
 from broker.setting.session import get_session
 from broker.storage.database.database_connection import db_init,db_close, get_connection
 from broker.storage.redis.redis_connection import startup_redis,shutdown_redis,redis_client
+from broker.functions.supporters.timing_check import TimeCheck
+from broker.storage.database.db_orm import Add_data,Retrive
 
 session = get_session()
 
@@ -77,6 +78,7 @@ def broker1func(metrics: Metrics, conn=Depends(get_connection)):
     rps_per_node = metrics.rps_per_node
     conn_rate = metrics.conn_rate
     queue_pressure = metrics.queue_pressure
+    timestamp = metrics.timestamp
 
     req_id = str(uuid.uuid4())
 
@@ -88,8 +90,6 @@ def broker1func(metrics: Metrics, conn=Depends(get_connection)):
         }
     )
 
-    print(f"REQUEST ARRIVED {client_id} and generated requested id is {req_id}")
-
     try:
         cursor = conn.cursor()
 
@@ -100,14 +100,9 @@ def broker1func(metrics: Metrics, conn=Depends(get_connection)):
         raise
 
 
-    timestamp = metrics.timestamp
-    client_ts = datetime.strptime(metrics.timestamp, "%Y-%m-%d %H:%M:%S.%f").replace(tzinfo=timezone.utc)
-    now = datetime.now(timezone.utc)
-    delta = abs((now - client_ts).total_seconds())
+    allowed_skew = TimeCheck.time_check(timestamp)
 
-    ALLOWED_SKEW = 60
-
-    if delta > ALLOWED_SKEW:
+    if allowed_skew is False:
         logger.error("data arrived late",
                       extra={"req_id": req_id, "client_id": client_id}
                       )
@@ -128,17 +123,7 @@ def broker1func(metrics: Metrics, conn=Depends(get_connection)):
 
     try:
 
-        query2 = "select client_name,thresold,l_buff,h_buff,email,ami,server_type,security_group from client_info where client_id = %s"
-
-        cursor.execute(query2, (client_id,))
-
-        db = cursor.fetchone()
-
-        if not db:
-            logger.warning("loading client from db caused issue",
-                            extra={"req_id": req_id, "client_id": client_id, "table": "client_info"}
-                            )
-            raise HTTPException(status_code=404, detail="Client not found")
+        db = Retrive.retrive_data_clint_info(client_id)
 
         threshold = db[1]
         buffer_z = db[2]
@@ -148,17 +133,8 @@ def broker1func(metrics: Metrics, conn=Depends(get_connection)):
         server_type = db[6]
         security_group = db[7]
 
-        query = "select last_scale_up_time,last_scale_down_time,total_cpu_window,total_cur_fluc ,total_cur_ml_window,total_cur_queue,total_cur_rps,total_cur_rps,last_queue,last_rps,last_cpu,last_ml_window from system_info where client_id = %s"
+        db = Retrive.retrive_data_system_info(client_id)
 
-        cursor.execute(query, (client_id,))
-
-        db = cursor.fetchone()
-
-        if not db:
-            logger.info("loading data from db caused issue",
-                         extra={"req_id": req_id, "client_id": client_id, "table": "system_info"}
-                         )
-            raise HTTPException(status_code=404, detail="data not found")
 
         last_scale_up_time = db[0]
         last_scale_down_time = db[1]
@@ -201,10 +177,12 @@ def broker1func(metrics: Metrics, conn=Depends(get_connection)):
         rps_increasing = check_incwindow.Window.increasing_window(rps, last_rps, total_cur_rps)
 
 
-        sql_query1 = f"update system_info set total_cur_queue =%s , last_queue = %s  , total_cur_rps =%s , last_rps =%s , last_cpu = %s  where client_id = %s"
-        values1 = (queue_increasing, queue_pressure, rps_increasing, rps, cpu ,client_id)
+        # sql_query1 = f"update system_info set total_cur_queue =%s , last_queue = %s  , total_cur_rps =%s , last_rps =%s , last_cpu = %s  where client_id = %s"
+        # values1 = (queue_increasing, queue_pressure, rps_increasing, rps, cpu ,client_id)
+        #
+        # cursor.execute(sql_query1,values1)
 
-        cursor.execute(sql_query1,values1)
+        Add_data.update1(total_cur_queue=queue_increasing, last_queue=queue_pressure, total_cur_rps=rps_increasing, last_rps=rps, last_cpu=cpu, client_id=client_id)
 
         app_red_zone = False
 
@@ -223,57 +201,36 @@ def broker1func(metrics: Metrics, conn=Depends(get_connection)):
         if not in_cooldown and app_red_zone is True:
             for_scaling.For_scale.scaling("UP", email, ami, server_type, server_expected, client_id, req_id,security_group)
 
-
-            sql_query5 = f"update local_state set total_cur_queue = ?, total_cur_rps = ? where client_id = ?"
-            values2 = (0, 0, client_id)
-            cursor.execute(sql_query5,values2)
+            Add_data.update2(total_cur_queue=0,total_cur_rps=0,client_id=client_id)
 
         if cpu >= threshold + buffer_z:
 
             new_total_cpu = total_cpu_window + 1
 
-            sql_query2 = f"update local_state set total_cpu_window = ? where client_id = ?"
-            values3 = (new_total_cpu,client_id,)
-
-            cursor.execute(sql_query2,values3)
+            Add_data.update3(total_cpu_window=new_total_cpu,client_id=client_id)
 
         else:
             cur_fluc = total_cur_fluc
 
             if cur_fluc > 2:
 
-                sql_query3 = f"update local_state set total_cpu_window = ? where client_id = ?"
-                values4 = (0, client_id,)
-
-                cursor.execute(sql_query3,values4)
-
+                Add_data.update3(total_cpu_window=0,client_id=client_id)
 
             else:
 
                 data = cur_fluc + 1
 
-                sql_query4 = f"update local_state set total_cur_fluc = ? where client_id = ?"
-                values5 = (data, client_id,)
-
-                cursor.execute(sql_query4,values5)
+                Add_data.update4(total_cur_fluc=data,client_id=client_id)
 
         if total_cpu_window >= 3 and not in_cooldown:
+
             for_scaling.For_scale.scaling("UP", email, ami, server_type, server_expected, client_id, req_id,security_group)
 
-
-
-            sql_query6 = f"update local_state set total_cpu_window = ?, total_cur_ml_window = ? where client_id = ?"
-            values6 = (0, 0, client_id)
-
-            cursor.execute(sql_query6, values6)
+            Add_data.update5(total_cpu_window=0,total_cur_ml_window=0,client_id=client_id)
 
             try:
 
-                cursor.execute(
-                    "UPDATE system_info SET last_scale_up_time = %s WHERE client_id = %s",
-                    (cur_time, client_id)
-                )
-                conn.commit()
+                Add_data.update6(last_scale_up_time=cur_time,client_id=client_id)
 
             except Exception:
 
@@ -361,10 +318,8 @@ def broker1func(metrics: Metrics, conn=Depends(get_connection)):
                     )
                     return
 
-            sql_query8 = "update local_state set total_cur_ml_window = ?,last_ml_window = ? where client_id = ?"
-            values6 =  (new_cur_ml, predicted_cpu, client_id)
 
-            cursor.execute(sql_query8, values6)
+            Add_data.update7(total_cur_ml_window=new_cur_ml,last_ml_window=predicted_cpu,client_id=client_id)
 
             if (
                     new_cur_ml >= 3
@@ -372,18 +327,11 @@ def broker1func(metrics: Metrics, conn=Depends(get_connection)):
             ):
                 for_scaling.For_scale.scaling("ML", email, ami, server_type, server_expected, client_id, req_id,security_group)
 
-                sql_query9 = "update local_state set total_cpu_window = ?, total_cur_ml_window = ? where client_id = ?"
-                values7 =  (0, 0, client_id)
-
-                cursor.execute(sql_query9, values7)
+                Add_data.update8(total_cpu_window=0,total_cur_ml_window=0,client_id=client_id)
 
                 try:
 
-                    cursor.execute(
-                        "UPDATE system_info SET last_scale_up_time = %s WHERE client_id = %s",
-                        (cur_time, client_id)
-                    )
-                    conn.commit()
+                    Add_data.update6(last_scale_up_time=cur_time,client_id=client_id)
 
                 except Exception:
 
