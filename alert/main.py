@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Request
 from contextlib import asynccontextmanager
 import time
-from operations.email import router as mail
+from operations.gmail import router as mail
 
 @asynccontextmanager
 async def lifespan(app:FastAPI):
