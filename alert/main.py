@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request
 from contextlib import asynccontextmanager
 import time
 from operations.gmail import router as mail
+from health.health import router as health
 
 @asynccontextmanager
 async def lifespan(app:FastAPI):
@@ -28,6 +29,7 @@ async def middleware(request:Request,callnext):
 
 
 app.include_router(mail)
+app.include_router(health)
 
 
 

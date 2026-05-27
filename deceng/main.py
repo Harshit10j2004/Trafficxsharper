@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 import time
 from operations.scale_down import router as sdr
 from operations.scale_up import router as sur
+from health.health import router as health
 
 @asynccontextmanager
 async def lifespan(app:FastAPI):
@@ -30,6 +31,7 @@ async def middleware(request:Request,callnext):
 
 app.include_router(sdr)
 app.include_router(sur)
+app.include_router(health)
 
 
 
