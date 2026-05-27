@@ -14,6 +14,8 @@ from broker.storage.database.database_connection import db_init,db_close, get_co
 from broker.storage.redis.redis_connection import startup_redis,shutdown_redis,redis_client
 from broker.functions.supporters.timing_check import TimeCheck
 from broker.storage.database.db_orm import Add_data,Retrive
+from broker.functions.supporters.red_gray_check import Check
+from broker.functions.supporters.freeze_file import Freez
 
 session = get_session()
 
@@ -133,20 +135,20 @@ def broker1func(metrics: Metrics, conn=Depends(get_connection)):
         server_type = db[6]
         security_group = db[7]
 
-        db = Retrive.retrive_data_system_info(client_id)
+        db_cli = Retrive.retrive_data_system_info(client_id)
 
 
-        last_scale_up_time = db[0]
-        last_scale_down_time = db[1]
-        total_cpu_window = db[2]
-        total_cur_fluc = db[3]
-        total_cur_ml_window = db[4]
-        total_cur_queue =db[5]
-        total_cur_rps =db[6]
-        last_queue = db[7]
-        last_rps = db[8]
-        last_cpu = db[9]
-        last_ml_window = db[10]
+        last_scale_up_time = db_cli[0]
+        last_scale_down_time = db_cli[1]
+        total_cpu_window = db_cli[2]
+        total_cur_fluc = db_cli[3]
+        total_cur_ml_window = db_cli[4]
+        total_cur_queue =db_cli[5]
+        total_cur_rps =db_cli[6]
+        last_queue = db_cli[7]
+        last_rps = db_cli[8]
+        last_cpu = db_cli[9]
+        last_ml_window = db_cli[10]
 
     except Exception:
 
@@ -164,39 +166,24 @@ def broker1func(metrics: Metrics, conn=Depends(get_connection)):
         logger.exception("Issue raised during scaling by missing servers",
                           extra={"req_id": req_id, "client_id": client_id}
                           )
-        raise HTTPException(500, "db failure")
+        raise HTTPException(500, "scaling error")
 
 
     try:
 
         cur_time = int(datetime.utcnow().timestamp())
 
-        in_gray_zone = (threshold - buffer_lower) <= cpu < (threshold + buffer_z)
+        in_gray_zone = Check.grey_check(threshold, buffer_lower, cpu, buffer_z)
 
         queue_increasing = check_incwindow.Window.increasing_window(queue_pressure, last_queue, total_cur_queue)
         rps_increasing = check_incwindow.Window.increasing_window(rps, last_rps, total_cur_rps)
 
-
-        # sql_query1 = f"update system_info set total_cur_queue =%s , last_queue = %s  , total_cur_rps =%s , last_rps =%s , last_cpu = %s  where client_id = %s"
-        # values1 = (queue_increasing, queue_pressure, rps_increasing, rps, cpu ,client_id)
-        #
-        # cursor.execute(sql_query1,values1)
-
         Add_data.update1(total_cur_queue=queue_increasing, last_queue=queue_pressure, total_cur_rps=rps_increasing, last_rps=rps, last_cpu=cpu, client_id=client_id)
 
-        app_red_zone = False
 
-        if (queue_increasing >= 3 and rps_increasing >= 3):
-            app_red_zone = True
+        app_red_zone = Check.red_check(queue_increasing, rps_increasing)
 
-        D_COOLDOWN = 240
-        COOLDOWN = 300
-        in_cooldown = False
-        in_d_cooldown = False
-        if last_scale_up_time:
-            if cur_time - int(last_scale_up_time) < COOLDOWN:
-                in_cooldown = True
-
+        in_cooldown = Check.cooldown(last_scale_up_time)
 
         if not in_cooldown and app_red_zone is True:
             for_scaling.For_scale.scaling("UP", email, ami, server_type, server_expected, client_id, req_id,security_group)
@@ -349,23 +336,6 @@ def broker1func(metrics: Metrics, conn=Depends(get_connection)):
                           extra={"req_id": req_id, "client_id": client_id})
         raise HTTPException(500, "scaling logic failed")
 
-    try:
-
-        file_name = f"{freeze_window}.log"
-        freeze_window_file = f"/home/ubuntu/tsx/data/client/{client_id}/{file_name}"
-
-        with open(freeze_window_file, "w") as f:
-            f.write(",".join(map(str, row)) + "\n")
-
-    except Exception:
-
-        logging.exception(f"Writing the files caused issue",
-                          extra={"req_id": req_id, "client_id": client_id})
-
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"File_writing_fails"
-        )
-
+    Freez.freeze(freeze_window, client_id, row, req_id)
 
     return {"status": "forwarded"}
