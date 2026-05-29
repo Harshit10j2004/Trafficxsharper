@@ -1,4 +1,4 @@
-from fastapi import APIRouter,HTTPException
+from fastapi import APIRouter,HTTPException, Request
 from pydantic import BaseModel
 import logging
 import smtplib
@@ -27,14 +27,14 @@ class AlertData(BaseModel):
 router = APIRouter()
 
 @router.post("/email")
-async def mainmail(data:AlertData):
+async def mainmail(data:AlertData,request:Request):
 
 
     email = data.email
     total_instance = data.total_instances
     scale = data.scale
     client_id = data.client_id
-    req_id = data.req_id
+    req_id = request.state.req_id
 
 
     logger.info(

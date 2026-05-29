@@ -1,4 +1,4 @@
-from fastapi import APIRouter, BackgroundTasks, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, HTTPException, status, Request
 from pydantic import BaseModel
 import logging
 import concurrent.futures
@@ -28,7 +28,7 @@ class Metrics(BaseModel):
     security_group: list
 
 @router.post("/deceng")
-async def decengfunc(metrics: Metrics, bg: BackgroundTasks):
+async def decengfunc(metrics: Metrics, bg: BackgroundTasks,request:Request):
 
     scale_message = metrics.scale_message
     email = metrics.email
@@ -36,7 +36,7 @@ async def decengfunc(metrics: Metrics, bg: BackgroundTasks):
     ami = metrics.ami
     server_type = metrics.server_type
     client_id = metrics.client_id
-    req_id = metrics.req_id
+    req_id = request.state.req_id
     joining_token = metrics.joining_token
     security_group = metrics.security_group
 

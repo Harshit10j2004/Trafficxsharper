@@ -1,7 +1,6 @@
-from fastapi import APIRouter,HTTPException,status,Depends
+from fastapi import APIRouter,HTTPException,status,Depends,Request
 from pydantic import BaseModel
 import logging
-import uuid
 import json
 from datetime import datetime
 from broker.functions.routers import for_ml
@@ -62,8 +61,8 @@ def shutdown_event():
 
 
 @router.post("/ingest")
-def broker1func(metrics: Metrics, conn=Depends(get_connection)):
-    cpu = metrics.cpu_percantage
+def broker1func(metrics: Metrics, request: Request, conn=Depends(get_connection)):
+    cpu = metrics.cpu_percentage
     cpu_idle = metrics.cpu_idle_percent
     totalram = metrics.total_ram
     ramused = metrics.ram_used
@@ -82,7 +81,11 @@ def broker1func(metrics: Metrics, conn=Depends(get_connection)):
     queue_pressure = metrics.queue_pressure
     timestamp = metrics.timestamp
 
-    req_id = str(uuid.uuid4())
+    req_id = request.state.req_id
+
+    headers = {
+        "X-Request-ID": req_id
+    }
 
     logger.info(
         "Broker request received",
@@ -159,7 +162,7 @@ def broker1func(metrics: Metrics, conn=Depends(get_connection)):
 
     try:
         if missing_server_count > int(server_expected / 10):
-            for_scaling.For_scale.scaling("UP",email, ami, server_type, server_expected, client_id, req_id,security_group)
+            for_scaling.For_scale.scaling("UP",email, ami, server_type, server_expected, client_id, req_id,security_group,headers)
 
     except Exception:
 
@@ -186,7 +189,7 @@ def broker1func(metrics: Metrics, conn=Depends(get_connection)):
         in_cooldown = Check.cooldown(last_scale_up_time)
 
         if not in_cooldown and app_red_zone is True:
-            for_scaling.For_scale.scaling("UP", email, ami, server_type, server_expected, client_id, req_id,security_group)
+            for_scaling.For_scale.scaling("UP", email, ami, server_type, server_expected, client_id, req_id,security_group,headers)
 
             Add_data.update2(total_cur_queue=0,total_cur_rps=0,client_id=client_id)
 
@@ -211,7 +214,7 @@ def broker1func(metrics: Metrics, conn=Depends(get_connection)):
 
         if total_cpu_window >= 3 and not in_cooldown:
 
-            for_scaling.For_scale.scaling("UP", email, ami, server_type, server_expected, client_id, req_id,security_group)
+            for_scaling.For_scale.scaling("UP", email, ami, server_type, server_expected, client_id, req_id,security_group,headers)
 
             Add_data.update5(total_cpu_window=0,total_cur_ml_window=0,client_id=client_id)
 
@@ -249,7 +252,7 @@ def broker1func(metrics: Metrics, conn=Depends(get_connection)):
 
             try:
 
-                r = session.post(url, json=payload)
+                r = session.post(url, json=payload, headers=headers)
                 r.raise_for_status()
 
             except Exception:
@@ -266,13 +269,13 @@ def broker1func(metrics: Metrics, conn=Depends(get_connection)):
 
             resp = for_ml.For_ml.prediction(
                 client_id,
-                freeze_window,
                 timestamp,
                 cpu,
+                cpu_idle,
                 live_connections,
+                freeze_window,
                 req_id,
-                rps,
-                queue_pressure
+                headers
             )
 
             if 0 <= resp <= 100:
@@ -288,11 +291,13 @@ def broker1func(metrics: Metrics, conn=Depends(get_connection)):
 
                 resp_retry = for_ml.For_ml.prediction(
                     client_id,
-                    freeze_window,
                     timestamp,
                     cpu,
+                    cpu_idle,
                     live_connections,
-                    req_id
+                    freeze_window,
+                    req_id,
+                    headers
                 )
 
                 if 0 <= resp_retry <= 100:
@@ -312,7 +317,7 @@ def broker1func(metrics: Metrics, conn=Depends(get_connection)):
                     new_cur_ml >= 3
 
             ):
-                for_scaling.For_scale.scaling("ML", email, ami, server_type, server_expected, client_id, req_id,security_group)
+                for_scaling.For_scale.scaling("ML", email, ami, server_type, server_expected, client_id, req_id,security_group,headers)
 
                 Add_data.update8(total_cpu_window=0,total_cur_ml_window=0,client_id=client_id)
 

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 import logging
 import joblib
@@ -15,7 +15,7 @@ logger = LoggerFactory.get_logger(
 )
 
 
-router = APIRouter
+router = APIRouter()
 
 
 class CleanMetrics(BaseModel):
@@ -31,13 +31,13 @@ class CleanMetrics(BaseModel):
 
 
 @router.post("/prediction")
-async def mlfunc(metrics: CleanMetrics):
+async def mlfunc(metrics: CleanMetrics, request: Request):
     cpu = metrics.cpu
     timestamp = metrics.timestamp
     window_id = metrics.window_id
     live_connections = metrics.live_connections
     client_id = metrics.client_id
-    req_id = metrics.req_id
+    req_id = request.state.req_id
     cpu_idle = metrics.cpu_idle
 
     logger.info(
