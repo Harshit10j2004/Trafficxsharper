@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter,Request
 from pydantic import BaseModel
 import logging
 from pathlib import Path
@@ -13,7 +13,7 @@ logger = LoggerFactory.get_logger(
 )
 
 
-router = APIRouter
+router = APIRouter()
 
 class InsertMetrics(BaseModel):
     timestamp: str
@@ -26,13 +26,13 @@ class InsertMetrics(BaseModel):
 
 
 @router.post("/insert")
-async def inserting(metrics: InsertMetrics):
+async def inserting(metrics: InsertMetrics,request: Request):
     cpu = metrics.cpu
     timestamp = metrics.timestamp
     window_id = metrics.window_id
     live_connections = metrics.live_connections
     client_id = metrics.client_id
-    req_id = metrics.req_id
+    req_id = request.state.req_id
     cpu_idle = metrics.cpu_idle
 
 

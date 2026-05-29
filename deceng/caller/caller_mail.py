@@ -29,7 +29,9 @@ class Mail():
 
             url = settings.URL
 
-            r = session.post(url, json=payload, timeout=10)
+            headers = {"X-Request-ID": req_id}
+
+            r = session.post(url, json=payload, timeout=10, headers=headers)
             r.raise_for_status()
 
             return {

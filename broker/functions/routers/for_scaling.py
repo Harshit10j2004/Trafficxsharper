@@ -14,7 +14,7 @@ class For_scale():
 
     @staticmethod
 
-    async def scaling(message, email, ami, server_type, server_expected, client_id, req_id,security_group):
+    async def scaling(message, email, ami, server_type, server_expected, client_id, req_id,security_group,headers):
         try:
 
             if (server_expected < 10):
@@ -36,7 +36,7 @@ class For_scale():
 
             url = settings.DEC_URL
 
-            r = requests.post(url, json=payload, timeout=1)
+            r = requests.post(url, json=payload, timeout=1, headers=headers)
             r.raise_for_status()
 
         except Exception:

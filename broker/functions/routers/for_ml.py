@@ -16,8 +16,7 @@ logger = LoggerFactory.get_logger(
 class For_ml():
 
     @staticmethod
-    async def prediction(client_id, timestamp, cpu, cpu_idle, live_connections, freeze_window, req_id, rps, queue_pressure,
-                   conn_rate):
+    async def prediction(client_id, timestamp, cpu, cpu_idle, live_connections, freeze_window, req_id, headers):
         try:
 
             payload = {
@@ -32,7 +31,7 @@ class For_ml():
 
             url = settings.ML_URL
 
-            r = session.post(url, json=payload)
+            r = session.post(url, json=payload, headers=headers)
             r.raise_for_status()
 
             resp = r.json()
