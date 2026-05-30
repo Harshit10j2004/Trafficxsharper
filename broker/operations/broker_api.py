@@ -138,6 +138,7 @@ def broker1func(metrics: Metrics, request: Request, conn=Depends(get_connection)
         server_type = db[6]
         security_group = db[7]
         manager_ip = db[8]
+        joining_token = db[9]
 
         db_cli = Retrive.retrive_data_system_info(client_id)
 
@@ -163,7 +164,7 @@ def broker1func(metrics: Metrics, request: Request, conn=Depends(get_connection)
 
     try:
         if missing_server_count > int(server_expected / 10):
-            for_scaling.For_scale.scaling("UP",email, ami, server_type, server_expected, client_id, req_id,security_group,headers,manager_ip)
+            for_scaling.For_scale.scaling("UP",email, ami, server_type, server_expected, client_id, req_id,security_group,headers,manager_ip,joining_token)
 
     except Exception:
 
@@ -190,7 +191,7 @@ def broker1func(metrics: Metrics, request: Request, conn=Depends(get_connection)
         in_cooldown = Check.cooldown(last_scale_up_time)
 
         if not in_cooldown and app_red_zone is True:
-            for_scaling.For_scale.scaling("UP", email, ami, server_type, server_expected, client_id, req_id,security_group,headers,manager_ip)
+            for_scaling.For_scale.scaling("UP", email, ami, server_type, server_expected, client_id, req_id,security_group,headers,manager_ip,joining_token)
 
             Add_data.update2(total_cur_queue=0,total_cur_rps=0,client_id=client_id)
 
@@ -215,7 +216,7 @@ def broker1func(metrics: Metrics, request: Request, conn=Depends(get_connection)
 
         if total_cpu_window >= 3 and not in_cooldown:
 
-            for_scaling.For_scale.scaling("UP", email, ami, server_type, server_expected, client_id, req_id,security_group,headers,manager_ip)
+            for_scaling.For_scale.scaling("UP", email, ami, server_type, server_expected, client_id, req_id,security_group,headers,manager_ip,joining_token)
 
             Add_data.update5(total_cpu_window=0,total_cur_ml_window=0,client_id=client_id)
 
@@ -318,7 +319,7 @@ def broker1func(metrics: Metrics, request: Request, conn=Depends(get_connection)
                     new_cur_ml >= 3
 
             ):
-                for_scaling.For_scale.scaling("ML", email, ami, server_type, server_expected, client_id, req_id,security_group,headers,manager_ip)
+                for_scaling.For_scale.scaling("ML", email, ami, server_type, server_expected, client_id, req_id,security_group,headers,manager_ip,joining_token)
 
                 Add_data.update8(total_cpu_window=0,total_cur_ml_window=0,client_id=client_id)
 

@@ -23,6 +23,9 @@ class ClientInfo(Base):
     server_type = Column(JSON)
     security_group = Column(JSON)
 
+    manager_ip = Column(String)
+    joining_token = Column(String)
+
 
 class SystemInfo(Base):
     __tablename__ = 'system_info'
@@ -237,7 +240,9 @@ class Retrive():
             ClientInfo.email,
             ClientInfo.ami,
             ClientInfo.server_type,
-            ClientInfo.security_group
+            ClientInfo.security_group,
+            ClientInfo.manager_ip,
+            ClientInfo.joining_token
         ).filter(
             ClientInfo.client_id == client_id
         ).first()
