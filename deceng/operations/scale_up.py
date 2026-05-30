@@ -26,6 +26,7 @@ class Metrics(BaseModel):
     req_id: str
     joining_token: str
     security_group: list
+    manager_ip: str
 
 @router.post("/deceng")
 async def decengfunc(metrics: Metrics, bg: BackgroundTasks,request:Request):
@@ -39,6 +40,7 @@ async def decengfunc(metrics: Metrics, bg: BackgroundTasks,request:Request):
     req_id = request.state.req_id
     joining_token = metrics.joining_token
     security_group = metrics.security_group
+    manager_ip = metrics.manager_ip
 
     base_path = f"/home/ubuntu/tsx/data/instances/{client_id}"
     pending_file = f"{base_path}/pending.txt"
@@ -76,11 +78,11 @@ async def decengfunc(metrics: Metrics, bg: BackgroundTasks,request:Request):
 
             for_aws = executor.submit(AWS_up.start_instance,
             aws_ami, instance_for_aws, aws_st, pending_file,
-            req_id, client_id, aws_sec, joining_token)
+            req_id, client_id, aws_sec, joining_token,manager_ip)
 
             for_azure = executor.submit(Azure_up.start_instance_azure,
             azure_ami, instance_for_azure, azure_st, pending_file,
-            req_id, client_id, joining_token, azure_sec)
+            req_id, client_id, joining_token, azure_sec,manager_ip)
 
         email = Mail.mail(email, client_id, req_id, scale_message, total_instances=total_instances)
 
