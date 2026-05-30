@@ -1,9 +1,10 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 import redis
 import json
+import asyncio
 import threading
 
-app = FastAPI
+app = FastAPI()
 
 @app.on_event("startup")
 def start_listener():
@@ -18,10 +19,8 @@ def redis_listener():
         if message["type"] == "message":
             data = message["data"]
 
-            # broadcast to all clients
             for client in list(clients):
                 try:
-                    import asyncio
                     asyncio.run(client.send_text(data))
                 except:
                     clients.remove(client)
