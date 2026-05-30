@@ -15,6 +15,7 @@ from broker.functions.supporters.timing_check import TimeCheck
 from broker.storage.database.db_orm import Add_data,Retrive
 from broker.functions.supporters.red_gray_check import Check
 from broker.functions.supporters.freeze_file import Freez
+from broker.functions.supporters.redis_data_packet import Redis_data
 
 session = get_session()
 
@@ -124,7 +125,10 @@ def broker1func(metrics: Metrics, request: Request, conn=Depends(get_connection)
     row = [timestamp, cpu, cpu_idle, totalram, ramused, diskusage, networkin, networkout, live_connections, client_id,
            server_expected, server_responded, missing_server_count]
 
-    redis_client.publish("metrics", json.dumps(row))
+    for_redis = Redis_data.redis_packet(timestamp, cpu, cpu_idle, totalram, ramused, diskusage, networkin, networkout, live_connections, client_id,
+           server_expected, server_responded, missing_server_count,rps,conn_rate,queue_pressure,rps_per_node,missing_server)
+
+    redis_client.publish("metrics", json.dumps(for_redis))
 
     try:
 
