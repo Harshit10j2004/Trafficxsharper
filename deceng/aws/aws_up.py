@@ -15,10 +15,10 @@ class AWS_up():
 
     @staticmethod
     async def start_instance(ami, total_instances, server_type, pending_file, req_id, client_id, security_group,
-                             joining_token):
+                             joining_token,manager_ip):
         try:
 
-            userdata_template = """#!/bin/bash
+            userdata_template = f"""#!/bin/bash
 
             LOCAL_IP=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4)
 
@@ -28,12 +28,12 @@ class AWS_up():
               --token {joining_token} \\
               --advertise-addr "${{LOCAL_IP}}" \\
               --data-path-addr "${{LOCAL_IP}}" \\
-              3.109.123.199:2377 || echo "Join failed" >&2
+              {manager_ip}:2377 || echo "Join failed" >&2
             """
 
             security_group_main = [security_group]
 
-            userdata = userdata_template.format(joining_token=joining_token)
+            userdata = userdata_template.format(joining_token=joining_token, manager_ip=manager_ip)
 
             response = get_ec2().run_instances(
                 ImageId=ami,

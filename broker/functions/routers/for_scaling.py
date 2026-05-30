@@ -14,7 +14,7 @@ class For_scale():
 
     @staticmethod
 
-    async def scaling(message, email, ami, server_type, server_expected, client_id, req_id,security_group,headers):
+    async def scaling(message, email, ami, server_type, server_expected, client_id, req_id,security_group,headers,manager_ip):
         try:
 
             if (server_expected < 10):
@@ -30,7 +30,8 @@ class For_scale():
                 "total_instance": total_instance,
                 "client_id": client_id,
                 "req_id": req_id,
-                "security_group": security_group
+                "security_group": security_group,
+                "manager_ip": manager_ip
 
             }
 

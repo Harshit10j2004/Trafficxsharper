@@ -18,8 +18,10 @@ class Azure_up():
 
     @staticmethod
     async def start_instance_azure(image, total_instances, server_type, pending_file, req_id, client_id, joining_token,
-                             security_group_id):
+                             security_group_id,manager_ip):
         try:
+
+
 
             userdata_template = """#!/bin/bash
 
@@ -32,10 +34,10 @@ class Azure_up():
               --token {joining_token} \\
               --advertise-addr "${{PUBLIC_IP}}" \\
               --data-path-addr "${{PUBLIC_IP}}" \\
-              3.109.123.199:2377 || echo "Join failed" >&2
+              {manager_ip}:2377 || echo "Join failed" >&2
 
                 """
-            userdata = userdata_template.format(joining_token=joining_token)
+            userdata = userdata_template.format(joining_token=joining_token, manager_ip=manager_ip)
             custom_data = base64.b64encode(userdata.encode('utf-8')).decode('ascii')
 
             subscription_id = settings.SUB_ID
