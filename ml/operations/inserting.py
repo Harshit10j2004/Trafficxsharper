@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 from ml.setting.loggers import LoggerFactory
 from ml.setting.conifg import settings
-
+from ml.functions.supporters.file_handel import File
 
 logger = LoggerFactory.get_logger(
     name="insertion",
@@ -51,18 +51,4 @@ async def inserting(metrics: InsertMetrics,request: Request):
 
     client_file = Path(f"{base_file}/{client_id}/file.csv")
 
-    try:
-
-        rows = [cpu,cpu_idle, live_connections]
-
-        with open(client_file, "a") as f:
-            f.write(",".join(map(str, rows)) + "\n")
-
-    except Exception:
-
-        logger.exception("Error caused during data writing",
-                          extra={"client_id": client_id, "req_id": req_id}
-                          )
-
-        raise
-
+    await File.file_write(logger,cpu, cpu_idle, live_connections,client_file,client_id,req_id)
