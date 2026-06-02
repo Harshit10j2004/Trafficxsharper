@@ -3,8 +3,8 @@ from pydantic import BaseModel
 import logging
 import smtplib
 from email.mime.text import MIMEText
-from alert.setting.loggers import LoggerFactory
-from alert.setting.conifg import settings
+from setting.loggers import LoggerFactory
+from setting.conifg import settings
 
 
 logger = LoggerFactory.get_logger(
@@ -72,19 +72,19 @@ async def mainmail(data:AlertData,request:Request):
             }
         )
     except smtplib.SMTPAuthenticationError:
-        logging.exception("SMTP authentication failed",
+        logger.exception("SMTP authentication failed",
                           extra={"client_id": client_id, "req_id": req_id, "email": email}
                           )
         raise HTTPException(status_code=503, detail="email auth failed")
 
     except smtplib.SMTPConnectError:
-        logging.exception("SMTP connection failed",
+        logger.exception("SMTP connection failed",
                           extra={"client_id": client_id, "req_id": req_id, "email": email}
                           )
         raise HTTPException(status_code=503, detail="email server unreachable")
 
     except Exception:
-        logging.exception("Unknown email error",
+        logger.exception("Unknown email error",
                           extra={"client_id": client_id, "req_id": req_id, "email": email}
                           )
         raise HTTPException(status_code=503, detail="email service failed")
