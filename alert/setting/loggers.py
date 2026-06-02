@@ -19,7 +19,10 @@ class LoggerFactory:
 
 
         log_path = Path(log_file)
-        log_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+        except FileExistsError:
+            pass
 
         file_handler = logging.FileHandler(log_file)
 
