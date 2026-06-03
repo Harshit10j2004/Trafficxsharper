@@ -2,7 +2,7 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-
+#creating sessions
 def get_session():
 
     retry_strategy = Retry(
