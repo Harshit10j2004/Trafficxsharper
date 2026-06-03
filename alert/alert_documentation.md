@@ -1,10 +1,12 @@
-TrafficXShaper Alert Service
+# TrafficXShaper Alert Service
 
-Service Overview and Operational Necessity
+## Service Overview and Operational Necessity
+
 The primary function of the TrafficXShaper (TSX) Alert Service is to automate email notifications to administrators when scaling actions are initiated across AWS and Azure infrastructure.
 Because virtual machines are provisioned dynamically in response to real-time workload fluctuations and machine learning telemetry, this notification mechanism is crucial. It provides administrators with immediate visibility into cluster state changes, aids in infrastructure resource auditing, and provides a clear audit trail for debugging scale-up and scale-down operations.
 
-Technology Stack
+## Technology Stack
+
 - Web Framework: FastAPI
 - Settings & Validation: Pydantic and Pydantic Settings
 - Web Server Gateway: Gunicorn (Process Manager) with Uvicorn (ASGI Workers)
@@ -12,26 +14,32 @@ Technology Stack
 - Target Provider: Gmail SMTP (utilizing Google Application-specific Passwords)
 - Virtualization: Docker (utilizing python:3.11-slim base image)
 
-Technical Architecture and Component Analysis
+## Technical Architecture and Component Analysis
 
 - main.py
 Defines the FastAPI application and HTTP middleware. The middleware inspects incoming HTTP request headers for an 'X-Request-ID' trace header. If absent, it generates a unique UUID. This request ID is attached to the request state and response headers to ensure end-to-end tracing across the broker, decision engine, and alert logs. It includes routers for mail sending and health checks.
 
+
 - operations/gmail.py
 Handles the core business logic of the service. It defines the AlertData validation model (validating email, total_instances, scale direction, client_id, and req_id) and exposes the POST /email endpoint. The endpoint formats a MIMEText message and connects to smtp.gmail.com on port 587, initializes TLS encryption, authenticates using the sender credentials, and dispatches the email.
+
 
 - setting/conifg.py
 Implements Pydantic BaseSettings to read environment configuration keys from the .env file. The config class loads credentials (MAIL, PASSWORD) and file paths (LOG_FILE_MAIL) into memory at application startup.
 
+
 - setting/loggers.py
 Implements a LoggerFactory that configures file handlers to output system logging messages containing request trace IDs to facilitate debugging.
+
 
 - Dockerfile
 Configures the Docker container build. It starts from python:3.11-slim, installs build dependencies (gcc, make), sets up a non-privileged OS user (appuser) for security isolation, installs python packages from requirements.txt, copies files, and launches the application using Gunicorn process manager on port 8000.
 
+
 - .env
-Contains local configuration variables:
-- MAIL: to mail the client
-- PASSWORD: the mail password
-- LOG_FILE_MAIL: /app/alert/logs/mail.log
+
+    Contains local configuration variables:
+  - MAIL: to mail the client
+  - PASSWORD: the mail password
+  - LOG_FILE_MAIL: /app/alert/logs/mail.log
 
