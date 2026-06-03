@@ -1,8 +1,10 @@
 import logging
 from pathlib import Path
 
+# to create loggers
 
 class LoggerFactory:
+    #stores all created loggers
     loggers = {}
 
     @classmethod
@@ -11,6 +13,7 @@ class LoggerFactory:
         if name in cls.loggers:
             return cls.loggers[name]
 
+        #creating new logger
         logger = logging.getLogger(name)
 
         if logger.handlers:
@@ -19,6 +22,7 @@ class LoggerFactory:
 
 
         log_path = Path(log_file)
+        #making the logs folder if not exist
         try:
             log_path.parent.mkdir(parents=True, exist_ok=True)
         except FileExistsError:

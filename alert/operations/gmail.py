@@ -6,6 +6,7 @@ from email.mime.text import MIMEText
 from setting.loggers import LoggerFactory
 from setting.conifg import settings
 
+# create logger for the email api
 
 logger = LoggerFactory.get_logger(
     name="mail",
@@ -13,9 +14,12 @@ logger = LoggerFactory.get_logger(
     level=logging.INFO
 )
 
+# getting the mail and password from env file
+
 sender = settings.MAIL
 app_password = settings.PASSWORD
 
+#basemodel class
 class AlertData(BaseModel):
 
     email: str
@@ -48,6 +52,8 @@ async def mainmail(data:AlertData,request:Request):
         }
     )
 
+    #the hardcoded mail to send to the client mail
+
     subject = f"TSX Alert: Infrastructure Scaled {scale}"
     body = (f"Hello,This is an automated alert from TSX.Your infrastructure has been scaled {scale} due to observed or predicted load conditions crossing the configured threshold, total instances scaled {scale} are {total_instance}")
 
@@ -55,6 +61,8 @@ async def mainmail(data:AlertData,request:Request):
     message['Subject'] = subject
     message['From'] = sender
     message['To'] = email
+
+    #sending mail in the try block
 
     try:
         with smtplib.SMTP("smtp.gmail.com", 587) as server:
