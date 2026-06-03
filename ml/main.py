@@ -4,6 +4,7 @@ import time
 import uuid
 from operations.prediction import router as pred
 from operations.inserting import router as inse
+from operations.trigger_for_train import router as train
 from health.health import router as health
 
 @asynccontextmanager
@@ -42,6 +43,7 @@ async def middleware(request:Request,callnext):
 
 app.include_router(pred)
 app.include_router(inse)
+app.include_router(train)
 app.include_router(health)
 
 
