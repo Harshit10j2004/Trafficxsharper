@@ -3,8 +3,8 @@ import logging
 from pathlib import Path
 from sklearn.ensemble import RandomForestRegressor
 import joblib
-from ml.setting.conifg import settings
-from ml.setting.loggers import LoggerFactory
+from setting.conifg import settings
+from setting.loggers import LoggerFactory
 
 logger = LoggerFactory.get_logger(
     name="model_train",

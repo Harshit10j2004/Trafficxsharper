@@ -2,9 +2,9 @@ from fastapi import APIRouter,Request
 from pydantic import BaseModel
 import logging
 from pathlib import Path
-from ml.setting.loggers import LoggerFactory
-from ml.setting.conifg import settings
-from ml.functions.supporters.file_handel import File
+from setting.loggers import LoggerFactory
+from setting.conifg import settings
+from functions.supporters.file_handel import File
 
 logger = LoggerFactory.get_logger(
     name="insertion",

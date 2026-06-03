@@ -4,9 +4,9 @@ import logging
 import joblib
 from pathlib import Path
 import pandas as pd
-from ml.setting.loggers import LoggerFactory
-from ml.setting.conifg import settings
-from ml.functions.supporters.file_handel import File
+from setting.loggers import LoggerFactory
+from setting.conifg import settings
+from functions.supporters.file_handel import File
 
 logger = LoggerFactory.get_logger(
     name="prediction",
