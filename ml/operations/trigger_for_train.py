@@ -7,7 +7,7 @@ from train_model.train_model import Train
 
 logger = LoggerFactory.get_logger(
     name="trigger_for_training",
-    log_file=settings.LOG_FILE_INSERTION,
+    log_file=settings.LOG_FILE_TRANNING,
     level=logging.INFO
 )
 
@@ -17,14 +17,14 @@ router = APIRouter()
 class InsertMetrics(BaseModel):
     client_id: str
 
-@router.post("/insert")
+@router.post("/train")
 async def inserting(metrics: InsertMetrics,request: Request):
 
    client_id = metrics.client_id
 
    try:
 
-        train_model_client = Train.train(client_id)
+        train_model_client = await Train.train(client_id)
 
         logger.info(f"the model for {client_id} is being tranied")
 

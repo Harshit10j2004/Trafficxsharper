@@ -68,7 +68,8 @@ async def mlfunc(metrics: CleanMetrics, request: Request):
 
         client_file = Path(f"{base_file}/{client_id}/file.csv")
 
-        df = pd.read_csv(client_file)
+        column_names = ['cpu_percentage', 'cpu_idle_percent', 'live_connections']
+        df = pd.read_csv(client_file, header=None, names=column_names)
 
         ml = Path(f"{base_file}/{client_id}/model.pkl")
         model = joblib.load(ml)

@@ -5,5 +5,5 @@ requests
 uvicorn
 gunicorn
 joblib
-sklearn
+scikit-learn
 pandas
