@@ -20,9 +20,12 @@ class Train():
         base_file = settings.FILE
         client_id = client_id
         filename = Path(f"{base_file}/{client_id}/file.csv")
-        df = pd.read_csv(filename)
 
         try:
+
+            column_names = ['cpu_percentage', 'cpu_idle_percent', 'live_connections']
+            df = pd.read_csv(filename, header=None, names=column_names)
+
             df["cpu_next"] = df["cpu_percentage"].shift(-1)
 
             df = df.dropna(subset=["cpu_next"]).reset_index(drop=True)
@@ -111,3 +114,14 @@ class Train():
         except Exception:
 
             logger.exception("Error caused during the saving the model")
+
+if __name__ == "__main__":
+
+    import asyncio
+    client_id = "client_abc123"
+    result = asyncio.run(Train.train(client_id))
+
+    if result is not None:
+        print(f"✅ Training completed successfully for {client_id}")
+    else:
+        print(f"❌ Training failed for {client_id}")

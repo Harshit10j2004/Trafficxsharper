@@ -1,7 +1,15 @@
+import os
+
 class File():
 
     @staticmethod
     async def file_write(logger,cpu, cpu_idle, live_connections,client_file,client_id,req_id):
+
+        if not os.path.exists(client_file):
+
+            os.mkdir(os.path.dirname(client_file))
+
+
         try:
 
             rows = [cpu, cpu_idle, live_connections]
