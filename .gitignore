@@ -1,4 +1,22 @@
-./.venv
-./.idea
 what to update
-./envs
+./env
+alert/.env
+ml/.env
+deceng/.env
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Node
+node_modules/
+
+# Vite
+dist/
+
+# IDE
+.idea/
+.vscode/
+history.txt
+
+alert/alert_documentation.md
