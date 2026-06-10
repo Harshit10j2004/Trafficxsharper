@@ -25,3 +25,4 @@ Dockerfile
 *.log
 *.db
 *.sqlite3
+alert_documentation.md
