@@ -10,13 +10,15 @@ RUN apt-get update -y && \
     apt-get clean -y && \
     apt-get install make -y && \
     rm -rf /var/lib/apt/lists/* && \
-    adduser --system --uid 1001 --group appuser
+    adduser --system --uid 1001 --group --home /home/appuser appuser
 
-RUN mkdir -p /app/logs && \
+RUN mkdir -p /home/appuser && \
+    chown -R appuser:appuser /home/appuser
+
+ENV HOME=/home/appuser
+
+RUN mkdir -p /app/logs /app/base_file && \
     chown -R appuser:appuser /app
-
-RUN mkdir -p /home/ubuntu/ml/logs && \
-    chown -R appuser:appuser /home/ubuntu
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
