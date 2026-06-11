@@ -1,0 +1,11 @@
+fastapi
+pydantic
+pydantic_settings
+requests
+uvicorn
+gunicorn
+boto3
+azure.mgmt.resource
+azure.identity
+base64
+uuid
