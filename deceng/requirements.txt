@@ -9,3 +9,4 @@ azure.mgmt.resource
 azure.identity
 base64
 uuid
+logging
