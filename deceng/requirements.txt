@@ -10,3 +10,5 @@ azure.identity
 base64
 uuid
 logging
+azure.mgmt.compute
+azure.mgmt.network

@@ -5,8 +5,8 @@ import os
 import base64
 import logging
 import time
-from deceng.setting.loggers import LoggerFactory
-from deceng.setting.conifg import settings
+from setting.loggers import LoggerFactory
+from setting.conifg import settings
 
 logger = LoggerFactory.get_logger(
     name="azure_up",

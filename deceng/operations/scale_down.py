@@ -2,12 +2,12 @@ from fastapi import APIRouter,Request
 from pydantic import BaseModel
 import uuid
 import logging
-from deceng.setting.conifg import settings
-from deceng.setting.loggers import LoggerFactory
-from deceng.caller.caller_mail import Mail
-from deceng.aws.aws_down import AWS_down
-from deceng.azure.scale_down_azure import Azure_down
-from deceng.files.file_management import File
+from setting.conifg import settings
+from setting.loggers import LoggerFactory
+from caller.caller_mail import Mail
+from aws.aws_down import AWS_down
+from azure.scale_down_azure import Azure_down
+from files.file_management import File
 
 router = APIRouter()
 

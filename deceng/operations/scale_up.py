@@ -1,12 +1,12 @@
 from fastapi import APIRouter, BackgroundTasks, HTTPException, status, Request
 from pydantic import BaseModel
 import logging
-import concurrent.futures
-from deceng.setting.conifg import settings
-from deceng.setting.loggers import LoggerFactory
-from deceng.caller.caller_mail import Mail
-from deceng.aws.aws_up import AWS_up
-from deceng.azure.scale_up_azure import Azure_up
+import asyncio
+from setting.conifg import settings
+from setting.loggers import LoggerFactory
+from caller.caller_mail import Mail
+from aws.aws_up import AWS_up
+from azure.scale_up_azure import Azure_up
 
 router = APIRouter()
 logger = LoggerFactory.get_logger(
@@ -62,7 +62,7 @@ async def decengfunc(metrics: Metrics, bg: BackgroundTasks,request:Request):
 
         scale = "UP"
 
-        instance_for_aws = int(total_instances/2)
+        instance_for_aws = max(1, int(total_instances / 2))
         instance_for_azure = total_instances - instance_for_aws
 
         aws_ami = ami[0]
@@ -74,15 +74,18 @@ async def decengfunc(metrics: Metrics, bg: BackgroundTasks,request:Request):
         aws_st = server_type[0]
         azure_st = server_type[1]
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-
-            for_aws = executor.submit(AWS_up.start_instance,
+        aws_task = AWS_up.start_instance(
             aws_ami, instance_for_aws, aws_st, pending_file,
-            req_id, client_id, aws_sec, joining_token,manager_ip)
+            req_id, client_id, aws_sec, joining_token, manager_ip
+        )
 
-            for_azure = executor.submit(Azure_up.start_instance_azure,
+        azure_task = Azure_up.start_instance_azure(
             azure_ami, instance_for_azure, azure_st, pending_file,
-            req_id, client_id, joining_token, azure_sec,manager_ip)
+            req_id, client_id, joining_token, azure_sec, manager_ip
+        )
+
+        aws_result = await asyncio.gather(aws_task)
+
 
         email = Mail.mail(email, client_id, req_id, scale_message, total_instances=total_instances)
 

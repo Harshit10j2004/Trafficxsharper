@@ -1,7 +1,7 @@
 import logging
-from deceng.setting.session import get_session
-from deceng.setting.conifg import settings
-from deceng.setting.loggers import LoggerFactory
+from setting.session import get_session
+from setting.conifg import settings
+from setting.loggers import LoggerFactory
 
 
 logger = LoggerFactory.get_logger(

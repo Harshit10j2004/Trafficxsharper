@@ -1,7 +1,7 @@
 import logging
-from deceng.aws.helper import get_ec2
-from deceng.setting.loggers import LoggerFactory
-from deceng.setting.conifg import settings
+from aws.helper import get_ec2_client
+from setting.loggers import LoggerFactory
+from setting.conifg import settings
 
 logger = LoggerFactory.get_logger(
     name="aws_down",
@@ -15,8 +15,10 @@ class AWS_down():
     async def removing_instance(id, client_id, req_id):
         try:
 
+            ec2_client = get_ec2_client()
+
             InstanceIds = [id.strip()]
-            get_ec2().terminate_instances(
+            ec2_client.terminate_instances(
                 InstanceIds=InstanceIds
             )
 

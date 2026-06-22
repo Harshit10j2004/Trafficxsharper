@@ -2,8 +2,8 @@ from azure.identity import DefaultAzureCredential
 from azure.mgmt.resource import ResourceManagementClient
 import os
 import logging
-from deceng.setting.loggers import LoggerFactory
-from deceng.setting.conifg import settings
+from setting.loggers import LoggerFactory
+from setting.conifg import settings
 
 logger = LoggerFactory.get_logger(
     name="azure_down",

@@ -1,8 +1,7 @@
 import boto3
 import logging
-from deceng.setting.loggers import LoggerFactory
-from deceng.setting.conifg import settings
-ec2_client = None
+from setting.loggers import LoggerFactory
+from setting.conifg import settings
 
 logger = LoggerFactory.get_logger(
     name="aws_up",
@@ -10,19 +9,21 @@ logger = LoggerFactory.get_logger(
     level=logging.INFO
 )
 
-class get_ec2():
+_ec2_client = None
 
-    @staticmethod
-    async def get_ec2():
-        global ec2_client
-        try:
-            if ec2_client is None:
-                ec2_client = boto3.client("ec2", region_name="ap-south-1")
-            return ec2_client
-
-        except Exception as e:
-
-            logger.exception(
-                f"CODE caused issue during calling the helper function {e}",
+def get_ec2_client():
+    global _ec2_client
+    try:
+        if _ec2_client is None:
+            _ec2_client = boto3.client(
+                "ec2",
+                region_name="ap-south-1",
+                aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+                aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY
             )
-
+        return _ec2_client
+    except Exception as e:
+        logger.exception(
+            f"CODE caused issue during calling the helper function {e}",
+        )
+        raise

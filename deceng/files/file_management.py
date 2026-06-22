@@ -1,7 +1,7 @@
 import os
 import logging
-from deceng.setting.loggers import LoggerFactory
-from deceng.setting.conifg import settings
+from setting.loggers import LoggerFactory
+from setting.conifg import settings
 
 logger = LoggerFactory.get_logger(
     name="files_filemanagement",

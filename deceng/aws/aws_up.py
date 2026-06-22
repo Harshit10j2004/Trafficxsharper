@@ -1,9 +1,9 @@
 import logging
 import os
 from fastapi import HTTPException, status
-from deceng.aws.helper import get_ec2
-from deceng.setting.loggers import LoggerFactory
-from deceng.setting.conifg import settings
+from aws.helper import get_ec2_client
+from setting.loggers import LoggerFactory
+from setting.conifg import settings
 
 logger = LoggerFactory.get_logger(
     name="aws_up",
@@ -18,7 +18,7 @@ class AWS_up():
                              joining_token,manager_ip):
         try:
 
-            userdata_template = f"""#!/bin/bash
+            userdata_template = """#!/bin/bash
 
             LOCAL_IP=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4)
 
@@ -35,7 +35,9 @@ class AWS_up():
 
             userdata = userdata_template.format(joining_token=joining_token, manager_ip=manager_ip)
 
-            response = get_ec2().run_instances(
+            ec2_client = get_ec2_client()
+
+            response = ec2_client.run_instances(
                 ImageId=ami,
                 MinCount=1,
                 MaxCount=total_instances,
@@ -85,7 +87,9 @@ class AWS_up():
     async def health_check(instance_id, req_id, client_id):
         try:
 
-            waiter = get_ec2().get_waiter("instance_status_ok")
+            ec2_client = get_ec2_client()
+
+            waiter = ec2_client.get_waiter("instance_status_ok")
             waiter.wait(
                 InstanceIds=[instance_id],
                 WaiterConfig={

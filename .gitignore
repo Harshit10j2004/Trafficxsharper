@@ -1,4 +1,3 @@
-what to update
 ./env
 alert/.env
 ml/.env
@@ -17,6 +16,4 @@ dist/
 # IDE
 .idea/
 .vscode/
-history.txt
 
-alert/alert_documentation.md
